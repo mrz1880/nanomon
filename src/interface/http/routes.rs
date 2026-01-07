@@ -29,7 +29,7 @@ pub fn create_router(monitoring_service: Arc<MonitoringService>) -> Router {
         .route("/api/dashboard", get(dashboard_handler))
         // Serve static files
         .nest_service("/static", ServeDir::new("src/interface/web/static"))
-        .nest_service("/", ServeDir::new("src/interface/web/static"))
+        .fallback_service(ServeDir::new("src/interface/web/static"))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }

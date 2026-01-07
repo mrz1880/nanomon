@@ -47,6 +47,7 @@ impl ProcfsAdapter {
         Self { config }
     }
 
+    #[allow(dead_code)]
     pub fn with_default_paths() -> Self {
         Self::new(ProcfsConfig::default())
     }

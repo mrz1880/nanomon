@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use bollard::container::{ListContainersOptions, StatsOptions};
-use bollard::models::ContainerStateStatusEnum;
 use bollard::Docker;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
@@ -19,6 +18,7 @@ impl DockerAdapter {
         Ok(Self { client })
     }
 
+    #[allow(dead_code)]
     pub fn with_socket(socket_path: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let client = Docker::connect_with_socket(socket_path, 120, bollard::API_DEFAULT_VERSION)?;
         Ok(Self { client })
@@ -147,7 +147,7 @@ impl ContainerSource for DockerAdapter {
             let image = container_summary.image.unwrap_or_else(|| "unknown".to_string());
             let state = Self::map_container_state(&container_summary.state);
             let created = container_summary.created.unwrap_or(0);
-            let created_at = DateTime::<Utc>::from_timestamp(created, 0).unwrap_or_else(|| Utc::now());
+            let created_at = DateTime::<Utc>::from_timestamp(created, 0).unwrap_or_else(Utc::now);
 
             let labels = container_summary.labels.unwrap_or_default();
             let stack = Self::extract_stack_name(&labels);

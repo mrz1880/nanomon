@@ -10,6 +10,7 @@ pub enum ResourceType {
 }
 
 /// Common trait for all monitored resources
+#[allow(dead_code)]
 pub trait MonitoredResource {
     fn resource_type(&self) -> ResourceType;
     fn name(&self) -> &str;

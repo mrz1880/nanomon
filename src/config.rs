@@ -5,9 +5,13 @@ use std::path::PathBuf;
 #[derive(Debug, Clone)]
 pub struct Config {
     pub port: u16,
+    #[allow(dead_code)]
     pub poll_interval: u64,
+    #[allow(dead_code)]
     pub history_size: usize,
+    #[allow(dead_code)]
     pub process_limit: usize,
+    #[allow(dead_code)]
     pub docker_socket: String,
     pub proc_path: PathBuf,
     pub sys_path: PathBuf,

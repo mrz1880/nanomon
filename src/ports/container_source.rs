@@ -15,11 +15,11 @@ pub struct ContainerStats {
 #[async_trait]
 pub trait ContainerSource: Send + Sync {
     /// List all containers (running and stopped)
-    async fn list_containers(&self) -> Result<Vec<Container>, Box<dyn std::error::Error>>;
+    async fn list_containers(&self) -> Result<Vec<Container>, Box<dyn std::error::Error + Send + Sync>>;
 
     /// Get real-time stats for a specific container
     async fn get_container_stats(
         &self,
         id: &ContainerId,
-    ) -> Result<ContainerStats, Box<dyn std::error::Error>>;
+    ) -> Result<ContainerStats, Box<dyn std::error::Error + Send + Sync>>;
 }

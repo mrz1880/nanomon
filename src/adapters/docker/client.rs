@@ -14,27 +14,25 @@ pub struct DockerAdapter {
 }
 
 impl DockerAdapter {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let client = Docker::connect_with_local_defaults()?;
         Ok(Self { client })
     }
 
-    pub fn with_socket(socket_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn with_socket(socket_path: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let client = Docker::connect_with_socket(socket_path, 120, bollard::API_DEFAULT_VERSION)?;
         Ok(Self { client })
     }
 
-    fn map_container_state(state: &Option<ContainerStateStatusEnum>) -> ContainerState {
-        match state {
-            Some(ContainerStateStatusEnum::RUNNING) => ContainerState::Running,
-            Some(ContainerStateStatusEnum::PAUSED) => ContainerState::Paused,
-            Some(ContainerStateStatusEnum::RESTARTING) => ContainerState::Restarting,
-            Some(ContainerStateStatusEnum::DEAD) => ContainerState::Dead,
-            Some(ContainerStateStatusEnum::CREATED) => ContainerState::Created,
-            Some(ContainerStateStatusEnum::EXITED) | Some(ContainerStateStatusEnum::REMOVING) => {
-                ContainerState::Stopped
-            }
-            Some(ContainerStateStatusEnum::EMPTY) | None => ContainerState::Stopped,
+    fn map_container_state(state: &Option<String>) -> ContainerState {
+        match state.as_deref() {
+            Some("running") => ContainerState::Running,
+            Some("paused") => ContainerState::Paused,
+            Some("restarting") => ContainerState::Restarting,
+            Some("dead") => ContainerState::Dead,
+            Some("created") => ContainerState::Created,
+            Some("exited") | Some("removing") => ContainerState::Stopped,
+            _ => ContainerState::Stopped,
         }
     }
 
@@ -60,7 +58,7 @@ impl DockerAdapter {
     async fn calculate_stats_from_stream(
         &self,
         id: &ContainerId,
-    ) -> Result<ContainerStats, Box<dyn std::error::Error>> {
+    ) -> Result<ContainerStats, Box<dyn std::error::Error + Send + Sync>> {
         use futures::stream::StreamExt;
 
         let mut stream = self.client.stats(
@@ -115,9 +113,9 @@ impl DockerAdapter {
 
         if let Some(blkio_stats) = stats.blkio_stats.io_service_bytes_recursive {
             for entry in blkio_stats {
-                match entry.op.as_deref() {
-                    Some("Read") => read_bytes += entry.value,
-                    Some("Write") => write_bytes += entry.value,
+                match entry.op.as_str() {
+                    "Read" => read_bytes += entry.value,
+                    "Write" => write_bytes += entry.value,
                     _ => {}
                 }
             }
@@ -134,7 +132,7 @@ impl DockerAdapter {
 
 #[async_trait]
 impl ContainerSource for DockerAdapter {
-    async fn list_containers(&self) -> Result<Vec<Container>, Box<dyn std::error::Error>> {
+    async fn list_containers(&self) -> Result<Vec<Container>, Box<dyn std::error::Error + Send + Sync>> {
         let options = Some(ListContainersOptions::<String> {
             all: true,
             ..Default::default()
@@ -177,7 +175,7 @@ impl ContainerSource for DockerAdapter {
     async fn get_container_stats(
         &self,
         id: &ContainerId,
-    ) -> Result<ContainerStats, Box<dyn std::error::Error>> {
+    ) -> Result<ContainerStats, Box<dyn std::error::Error + Send + Sync>> {
         self.calculate_stats_from_stream(id).await
     }
 }

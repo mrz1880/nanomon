@@ -6,11 +6,11 @@ use crate::domain::Process;
 #[async_trait]
 pub trait ProcessSource: Send + Sync {
     /// List all processes
-    async fn list_processes(&self) -> Result<Vec<Process>, Box<dyn std::error::Error>>;
+    async fn list_processes(&self) -> Result<Vec<Process>, Box<dyn std::error::Error + Send + Sync>>;
 
     /// Get top N processes sorted by CPU usage
-    async fn get_top_by_cpu(&self, n: usize) -> Result<Vec<Process>, Box<dyn std::error::Error>>;
+    async fn get_top_by_cpu(&self, n: usize) -> Result<Vec<Process>, Box<dyn std::error::Error + Send + Sync>>;
 
     /// Get top N processes sorted by memory usage
-    async fn get_top_by_memory(&self, n: usize) -> Result<Vec<Process>, Box<dyn std::error::Error>>;
+    async fn get_top_by_memory(&self, n: usize) -> Result<Vec<Process>, Box<dyn std::error::Error + Send + Sync>>;
 }

@@ -24,11 +24,11 @@ impl ProcfsSystemSource {
         }
     }
 
-    fn read_file(&self, path: &str) -> Result<String, Box<dyn std::error::Error>> {
+    fn read_file(&self, path: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         Ok(fs::read_to_string(path)?)
     }
 
-    fn get_hostname(&self) -> Result<String, Box<dyn std::error::Error>> {
+    fn get_hostname(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let content = self.read_file("/etc/hostname")?;
         Ok(content.trim().to_string())
     }
@@ -69,7 +69,7 @@ impl ProcfsSystemSource {
 
 #[async_trait]
 impl SystemSource for ProcfsSystemSource {
-    async fn get_host_info(&self) -> Result<HostInfo, Box<dyn std::error::Error>> {
+    async fn get_host_info(&self) -> Result<HostInfo, Box<dyn std::error::Error + Send + Sync>> {
         let uptime_path = self.config.proc_path.join("uptime");
         let uptime_content = fs::read_to_string(&uptime_path)?;
         let uptime_seconds = parser::parse_uptime(&uptime_content)?;
@@ -82,7 +82,7 @@ impl SystemSource for ProcfsSystemSource {
         })
     }
 
-    async fn get_cpu_metrics(&self) -> Result<CpuMetrics, Box<dyn std::error::Error>> {
+    async fn get_cpu_metrics(&self) -> Result<CpuMetrics, Box<dyn std::error::Error + Send + Sync>> {
         let stat_path = self.config.proc_path.join("stat");
         let stat_content = fs::read_to_string(&stat_path)?;
         let current_stat = parser::parse_cpu_stat(&stat_content)?;
@@ -94,7 +94,7 @@ impl SystemSource for ProcfsSystemSource {
         Ok(metrics)
     }
 
-    async fn get_memory_metrics(&self) -> Result<MemoryMetrics, Box<dyn std::error::Error>> {
+    async fn get_memory_metrics(&self) -> Result<MemoryMetrics, Box<dyn std::error::Error + Send + Sync>> {
         let meminfo_path = self.config.proc_path.join("meminfo");
         let meminfo_content = fs::read_to_string(&meminfo_path)?;
         let meminfo = parser::parse_meminfo(&meminfo_content)?;
@@ -114,7 +114,7 @@ impl SystemSource for ProcfsSystemSource {
             .with_swap(swap_used))
     }
 
-    async fn get_load_average(&self) -> Result<LoadAverage, Box<dyn std::error::Error>> {
+    async fn get_load_average(&self) -> Result<LoadAverage, Box<dyn std::error::Error + Send + Sync>> {
         let loadavg_path = self.config.proc_path.join("loadavg");
         let loadavg_content = fs::read_to_string(&loadavg_path)?;
         let (one, five, fifteen) = parser::parse_loadavg(&loadavg_content)?;
@@ -122,7 +122,7 @@ impl SystemSource for ProcfsSystemSource {
         Ok(LoadAverage::new(one, five, fifteen))
     }
 
-    async fn list_disks(&self) -> Result<Vec<Disk>, Box<dyn std::error::Error>> {
+    async fn list_disks(&self) -> Result<Vec<Disk>, Box<dyn std::error::Error + Send + Sync>> {
         let mounts_path = self.config.proc_path.join("mounts");
         let mounts_content = fs::read_to_string(&mounts_path)?;
         let mounts = parser::parse_mounts(&mounts_content)?;
@@ -140,9 +140,9 @@ impl SystemSource for ProcfsSystemSource {
             // Try to get disk stats using statvfs
             if let Ok(stat) = nix::sys::statvfs::statvfs(mount.mount_point.as_str()) {
                 let block_size = stat.block_size();
-                let total_bytes = stat.blocks() * block_size;
-                let available_bytes = stat.blocks_available() * block_size;
-                let free_bytes = stat.blocks_free() * block_size;
+                let total_bytes = stat.blocks() as u64 * block_size;
+                let available_bytes = stat.blocks_available() as u64 * block_size;
+                let free_bytes = stat.blocks_free() as u64 * block_size;
                 let used_bytes = total_bytes.saturating_sub(free_bytes);
 
                 disks.push(Disk::new(
@@ -159,7 +159,7 @@ impl SystemSource for ProcfsSystemSource {
         Ok(disks)
     }
 
-    async fn list_network_interfaces(&self) -> Result<Vec<NetworkInterface>, Box<dyn std::error::Error>> {
+    async fn list_network_interfaces(&self) -> Result<Vec<NetworkInterface>, Box<dyn std::error::Error + Send + Sync>> {
         let net_class_path = self.config.sys_path.join("class/net");
         let mut interfaces = Vec::new();
 

@@ -26,7 +26,7 @@ impl MonitoringService {
     }
 
     /// Collect a complete host snapshot with all metrics
-    pub async fn collect_all(&self) -> Result<Host, Box<dyn std::error::Error>> {
+    pub async fn collect_all(&self) -> Result<Host, Box<dyn std::error::Error + Send + Sync>> {
         // Collect all metrics in parallel
         let (host_info, cpu, memory, load_avg, disks, interfaces, containers, processes) = tokio::try_join!(
             self.system_source.get_host_info(),
@@ -51,12 +51,12 @@ impl MonitoringService {
     }
 
     /// Get all containers
-    pub async fn get_containers(&self) -> Result<Vec<Container>, Box<dyn std::error::Error>> {
+    pub async fn get_containers(&self) -> Result<Vec<Container>, Box<dyn std::error::Error + Send + Sync>> {
         self.container_source.list_containers().await
     }
 
     /// Get containers grouped by stack
-    pub async fn get_stacks(&self) -> Result<Vec<Stack>, Box<dyn std::error::Error>> {
+    pub async fn get_stacks(&self) -> Result<Vec<Stack>, Box<dyn std::error::Error + Send + Sync>> {
         let containers = self.get_containers().await?;
         let mut stacks_map = std::collections::HashMap::new();
 
@@ -81,7 +81,7 @@ impl MonitoringService {
     pub async fn get_top_processes_by_cpu(
         &self,
         n: usize,
-    ) -> Result<Vec<Process>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<Process>, Box<dyn std::error::Error + Send + Sync>> {
         self.process_source.get_top_by_cpu(n).await
     }
 
@@ -89,12 +89,12 @@ impl MonitoringService {
     pub async fn get_top_processes_by_memory(
         &self,
         n: usize,
-    ) -> Result<Vec<Process>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<Process>, Box<dyn std::error::Error + Send + Sync>> {
         self.process_source.get_top_by_memory(n).await
     }
 
     /// Get all processes
-    pub async fn get_all_processes(&self) -> Result<Vec<Process>, Box<dyn std::error::Error>> {
+    pub async fn get_all_processes(&self) -> Result<Vec<Process>, Box<dyn std::error::Error + Send + Sync>> {
         self.process_source.list_processes().await
     }
 }

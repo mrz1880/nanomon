@@ -3,6 +3,7 @@ use std::time::Duration;
 use crate::domain::Host;
 
 /// Port for storing and retrieving host snapshots
+#[allow(dead_code)]
 pub trait MetricStore: Send + Sync {
     /// Store a new host snapshot
     fn store(&mut self, snapshot: Host);

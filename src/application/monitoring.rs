@@ -94,6 +94,7 @@ impl MonitoringService {
     }
 
     /// Get all processes
+    #[allow(dead_code)]
     pub async fn get_all_processes(&self) -> Result<Vec<Process>, Box<dyn std::error::Error + Send + Sync>> {
         self.process_source.list_processes().await
     }

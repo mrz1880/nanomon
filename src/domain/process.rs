@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{ContainerId, CpuMetrics, MemoryMetrics, MonitoredResource, ResourceType};
+use super::{ContainerId, MonitoredResource, ResourceType};
 
 /// Process state
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -78,6 +78,7 @@ impl Process {
         self
     }
 
+    #[allow(dead_code)]
     pub fn is_containerized(&self) -> bool {
         self.container_id.is_some()
     }

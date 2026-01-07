@@ -20,7 +20,7 @@ pub type ParseResult<T> = Result<T, ParseError>;
 
 /// Parse /proc/uptime
 pub fn parse_uptime(content: &str) -> ParseResult<u64> {
-    let parts: Vec<&str> = content.trim().split_whitespace().collect();
+    let parts: Vec<&str> = content.split_whitespace().collect();
     if parts.is_empty() {
         return Err(ParseError::Parse("Empty uptime file".to_string()));
     }
@@ -34,7 +34,7 @@ pub fn parse_uptime(content: &str) -> ParseResult<u64> {
 
 /// Parse /proc/loadavg
 pub fn parse_loadavg(content: &str) -> ParseResult<(f64, f64, f64)> {
-    let parts: Vec<&str> = content.trim().split_whitespace().collect();
+    let parts: Vec<&str> = content.split_whitespace().collect();
     if parts.len() < 3 {
         return Err(ParseError::Parse("Invalid loadavg format".to_string()));
     }

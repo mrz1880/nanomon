@@ -77,6 +77,7 @@ impl Host {
     }
 
     /// Get total network I/O across all interfaces
+    #[allow(dead_code)]
     pub fn total_network_rx_bytes(&self) -> u64 {
         self.network_interfaces
             .iter()
@@ -84,6 +85,7 @@ impl Host {
             .sum()
     }
 
+    #[allow(dead_code)]
     pub fn total_network_tx_bytes(&self) -> u64 {
         self.network_interfaces
             .iter()

@@ -30,6 +30,7 @@ impl Disk {
         }
     }
 
+    #[allow(dead_code)]
     pub fn usage_percent(&self) -> f64 {
         if self.total_bytes == 0 {
             return 0.0;

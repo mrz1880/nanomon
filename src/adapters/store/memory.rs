@@ -14,6 +14,7 @@ pub struct MemoryStore {
 }
 
 impl MemoryStore {
+    #[allow(dead_code)]
     pub fn new(max_size: usize) -> Self {
         Self {
             snapshots: RwLock::new(VecDeque::with_capacity(max_size)),
@@ -21,6 +22,7 @@ impl MemoryStore {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_default_size() -> Self {
         Self::new(360) // 1 hour at 10s interval
     }
@@ -45,7 +47,7 @@ impl MetricStore for MemoryStore {
         None
     }
 
-    fn get_history(&self, duration: Duration) -> Vec<&Host> {
+    fn get_history(&self, _duration: Duration) -> Vec<&Host> {
         // Same issue as get_latest - cannot return references
         Vec::new()
     }
@@ -59,11 +61,13 @@ impl MetricStore for MemoryStore {
 use std::sync::Arc;
 
 /// In-memory ring buffer store using Arc for shared snapshots
+#[allow(dead_code)]
 pub struct ArcMemoryStore {
     snapshots: RwLock<VecDeque<Arc<Host>>>,
     max_size: usize,
 }
 
+#[allow(dead_code)]
 impl ArcMemoryStore {
     pub fn new(max_size: usize) -> Self {
         Self {

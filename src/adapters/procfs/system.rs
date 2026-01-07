@@ -129,7 +129,7 @@ impl SystemSource for ProcfsSystemSource {
         let mut disks = Vec::new();
 
         // Filter to only real filesystems and skip common virtual ones
-        let skip_fs = ["proc", "sysfs", "tmpfs", "devtmpfs", "devpts", "cgroup", "cgroup2", "securityfs", "debugfs"];
+        let skip_fs = ["proc", "sysfs", "tmpfs", "devtmpfs", "devpts", "cgroup", "cgroup2", "securityfs", "debugfs", "mqueue", "binfmt_misc", "pstore", "efivarfs", "bpf", "tracefs", "fuse"];
 
         for mount in mounts {
             if skip_fs.contains(&mount.filesystem.as_str()) {
@@ -143,6 +143,11 @@ impl SystemSource for ProcfsSystemSource {
                 let available_bytes = stat.blocks_available() as u64 * block_size;
                 let free_bytes = stat.blocks_free() as u64 * block_size;
                 let used_bytes = total_bytes.saturating_sub(free_bytes);
+
+                // Skip disks with zero capacity (virtual filesystems)
+                if total_bytes == 0 {
+                    continue;
+                }
 
                 disks.push(Disk::new(
                     mount.device.clone(),

@@ -20,7 +20,7 @@ impl ProcfsProcessSource {
         Self { config }
     }
 
-    fn list_pids(&self) -> Result<Vec<u32>, Box<dyn std::error::Error>> {
+    fn list_pids(&self) -> Result<Vec<u32>, Box<dyn std::error::Error + Send + Sync>> {
         let mut pids = Vec::new();
 
         for entry in fs::read_dir(&self.config.proc_path)? {
@@ -36,7 +36,7 @@ impl ProcfsProcessSource {
         Ok(pids)
     }
 
-    fn read_process(&self, pid: u32) -> Result<Process, Box<dyn std::error::Error>> {
+    fn read_process(&self, pid: u32) -> Result<Process, Box<dyn std::error::Error + Send + Sync>> {
         let pid_path = self.config.proc_path.join(pid.to_string());
 
         // Read /proc/{pid}/stat
@@ -115,7 +115,7 @@ impl ProcfsProcessSource {
         None
     }
 
-    fn get_container_id_from_cgroup(&self, pid: u32) -> Result<Option<crate::domain::ContainerId>, Box<dyn std::error::Error>> {
+    fn get_container_id_from_cgroup(&self, pid: u32) -> Result<Option<crate::domain::ContainerId>, Box<dyn std::error::Error + Send + Sync>> {
         let cgroup_path = self.config.proc_path.join(format!("{}/cgroup", pid));
         let content = fs::read_to_string(cgroup_path).unwrap_or_default();
 
@@ -138,7 +138,7 @@ impl ProcfsProcessSource {
 
 #[async_trait]
 impl ProcessSource for ProcfsProcessSource {
-    async fn list_processes(&self) -> Result<Vec<Process>, Box<dyn std::error::Error>> {
+    async fn list_processes(&self) -> Result<Vec<Process>, Box<dyn std::error::Error + Send + Sync>> {
         let pids = self.list_pids()?;
         let mut processes = Vec::new();
 
@@ -151,14 +151,14 @@ impl ProcessSource for ProcfsProcessSource {
         Ok(processes)
     }
 
-    async fn get_top_by_cpu(&self, n: usize) -> Result<Vec<Process>, Box<dyn std::error::Error>> {
+    async fn get_top_by_cpu(&self, n: usize) -> Result<Vec<Process>, Box<dyn std::error::Error + Send + Sync>> {
         let mut processes = self.list_processes().await?;
         processes.sort_by(|a, b| b.cpu_percent.partial_cmp(&a.cpu_percent).unwrap());
         processes.truncate(n);
         Ok(processes)
     }
 
-    async fn get_top_by_memory(&self, n: usize) -> Result<Vec<Process>, Box<dyn std::error::Error>> {
+    async fn get_top_by_memory(&self, n: usize) -> Result<Vec<Process>, Box<dyn std::error::Error + Send + Sync>> {
         let mut processes = self.list_processes().await?;
         processes.sort_by(|a, b| b.memory_bytes.cmp(&a.memory_bytes));
         processes.truncate(n);

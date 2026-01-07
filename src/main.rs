@@ -16,7 +16,7 @@ use config::Config;
 use interface::http::create_router;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Load configuration
     let config = Config::from_env();
 

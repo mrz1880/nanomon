@@ -6,7 +6,7 @@ pub mod network;
 pub mod process;
 pub mod resource;
 
-pub use container::{Container, ContainerId, ContainerState};
+pub use container::{Container, ContainerId, ContainerState, Stack};
 pub use disk::Disk;
 pub use host::Host;
 pub use metrics::{CpuMetrics, IoMetrics, LoadAverage, MemoryMetrics, NetworkMetrics};

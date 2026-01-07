@@ -1,0 +1,28 @@
+services:
+  nanomon:
+    build: .
+    container_name: nanomon
+    ports:
+      - "3000:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    environment:
+      - NANOMON_PORT=3000
+      - NANOMON_POLL_INTERVAL=10
+      - NANOMON_HISTORY_SIZE=360
+      - NANOMON_PROCESS_LIMIT=20
+      - NANOMON_PROC_PATH=/host/proc
+      - NANOMON_SYS_PATH=/host/sys
+      - NANOMON_LOG_LEVEL=info
+    restart: unless-stopped
+    # Required to read host processes
+    pid: host
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    # Read-only root filesystem (except /tmp)
+    read_only: true
+    tmpfs:
+      - /tmp

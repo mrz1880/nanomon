@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NanoMon - Lightweight NAS Monitoring</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>NanoMon</h1>
+            <nav>
+                <button class="tab-btn active" data-tab="host">Host</button>
+                <button class="tab-btn" data-tab="containers">Containers</button>
+                <button class="tab-btn" data-tab="processes">Processes</button>
+                <button class="tab-btn" data-tab="disks">Disks</button>
+            </nav>
+            <div class="refresh-info">
+                <span id="refresh-interval">⟳ 10s</span>
+            </div>
+        </header>
+
+        <!-- Host Tab -->
+        <section id="host-tab" class="tab-content active">
+            <div class="host-header">
+                <h2 id="hostname">Loading...</h2>
+                <span id="uptime" class="uptime">up 0 days</span>
+            </div>
+
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <h3>LOAD</h3>
+                    <div class="load-values">
+                        <div><span id="load-1">0.00</span><small>1min</small></div>
+                        <div><span id="load-5">0.00</span><small>5min</small></div>
+                        <div><span id="load-15">0.00</span><small>15min</small></div>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <h3>CPU</h3>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="cpu-bar" style="width: 0%"></div>
+                    </div>
+                    <div class="metric-details">
+                        <span id="cpu-percent">0%</span>
+                        <span id="cpu-details">user 0% · sys 0% · iowait 0%</span>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <h3>RAM</h3>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="ram-bar" style="width: 0%"></div>
+                    </div>
+                    <div class="metric-details">
+                        <span id="ram-percent">0%</span>
+                        <span id="ram-details">0 GB / 0 GB</span>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <h3>NET</h3>
+                    <div class="net-stats">
+                        <div>▼ <span id="net-rx">0 MB/s</span></div>
+                        <div>▲ <span id="net-tx">0 MB/s</span></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Containers Tab -->
+        <section id="containers-tab" class="tab-content">
+            <div id="containers-list">
+                <p class="loading">Loading containers...</p>
+            </div>
+        </section>
+
+        <!-- Processes Tab -->
+        <section id="processes-tab" class="tab-content">
+            <div class="controls">
+                <button class="sort-btn active" data-sort="cpu">Sort by CPU</button>
+                <button class="sort-btn" data-sort="memory">Sort by Memory</button>
+            </div>
+            <table class="processes-table">
+                <thead>
+                    <tr>
+                        <th>PID</th>
+                        <th>USER</th>
+                        <th>CPU%</th>
+                        <th>MEM%</th>
+                        <th>COMMAND</th>
+                    </tr>
+                </thead>
+                <tbody id="processes-list">
+                    <tr><td colspan="5" class="loading">Loading processes...</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Disks Tab -->
+        <section id="disks-tab" class="tab-content">
+            <table class="disks-table">
+                <thead>
+                    <tr>
+                        <th>MOUNT</th>
+                        <th>SIZE</th>
+                        <th>USED</th>
+                        <th>FREE</th>
+                        <th>USE%</th>
+                    </tr>
+                </thead>
+                <tbody id="disks-list">
+                    <tr><td colspan="5" class="loading">Loading disks...</td></tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

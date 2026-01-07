@@ -1,0 +1,364 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --bg-primary: #0d1117;
+    --bg-secondary: #161b22;
+    --bg-tertiary: #21262d;
+    --text-primary: #c9d1d9;
+    --text-secondary: #8b949e;
+    --border: #30363d;
+    --accent: #58a6ff;
+    --accent-hover: #79c0ff;
+    --success: #3fb950;
+    --warning: #d29922;
+    --danger: #f85149;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.5;
+}
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Header */
+header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 30px;
+}
+
+header h1 {
+    font-size: 28px;
+    font-weight: 600;
+}
+
+nav {
+    display: flex;
+    gap: 10px;
+}
+
+.tab-btn {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.tab-btn:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.tab-btn.active {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+}
+
+.refresh-info {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+/* Tabs */
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* Host Tab */
+.host-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+}
+
+.uptime {
+    color: var(--text-secondary);
+    font-size: 16px;
+}
+
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+.metric-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.metric-card h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 15px;
+}
+
+.load-values {
+    display: flex;
+    justify-content: space-around;
+    font-size: 18px;
+}
+
+.load-values div {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.load-values span {
+    font-weight: 600;
+    color: var(--accent);
+}
+
+.load-values small {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.progress-bar {
+    background: var(--bg-tertiary);
+    height: 24px;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--success), var(--accent));
+    transition: width 0.3s ease;
+}
+
+.metric-details {
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+}
+
+.metric-details span:first-child {
+    font-weight: 600;
+    font-size: 18px;
+}
+
+.metric-details span:last-child {
+    color: var(--text-secondary);
+}
+
+.net-stats {
+    display: flex;
+    justify-content: space-around;
+    font-size: 18px;
+}
+
+.net-stats div {
+    display: flex;
+    gap: 8px;
+}
+
+/* Containers Tab */
+.stack {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.stack-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+}
+
+.stack-header:hover {
+    background: var(--bg-tertiary);
+}
+
+.stack-name {
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.stack-stats {
+    display: flex;
+    gap: 20px;
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.container-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+}
+
+.container-item:last-child {
+    border-bottom: none;
+}
+
+.container-name {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.status-dot.running {
+    background: var(--success);
+}
+
+.status-dot.stopped {
+    background: var(--text-secondary);
+}
+
+.container-metrics {
+    display: flex;
+    gap: 15px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+/* Processes Tab */
+.controls {
+    margin-bottom: 20px;
+}
+
+.sort-btn {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-right: 10px;
+}
+
+.sort-btn:hover {
+    background: var(--bg-tertiary);
+}
+
+.sort-btn.active {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+}
+
+.processes-table,
+.disks-table {
+    width: 100%;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    border-collapse: collapse;
+    overflow: hidden;
+}
+
+.processes-table th,
+.processes-table td,
+.disks-table th,
+.disks-table td {
+    padding: 12px 15px;
+    text-align: left;
+}
+
+.processes-table th,
+.disks-table th {
+    background: var(--bg-tertiary);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+}
+
+.processes-table tbody tr,
+.disks-table tbody tr {
+    border-top: 1px solid var(--border);
+}
+
+.processes-table tbody tr:hover,
+.disks-table tbody tr:hover {
+    background: var(--bg-tertiary);
+}
+
+.loading {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-secondary);
+}
+
+/* Utility classes */
+.text-success {
+    color: var(--success);
+}
+
+.text-warning {
+    color: var(--warning);
+}
+
+.text-danger {
+    color: var(--danger);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    header {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    nav {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .metrics-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .processes-table,
+    .disks-table {
+        font-size: 12px;
+    }
+
+    .processes-table th,
+    .processes-table td,
+    .disks-table th,
+    .disks-table td {
+        padding: 8px 10px;
+    }
+}

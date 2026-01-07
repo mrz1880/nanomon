@@ -220,10 +220,21 @@ nav {
     align-items: center;
     padding: 12px 20px;
     border-bottom: 1px solid var(--border);
+    transition: background 0.2s;
 }
 
 .container-item:last-child {
     border-bottom: none;
+}
+
+.container-item.top-consumer {
+    background: rgba(88, 166, 255, 0.1);
+    border-left: 3px solid var(--accent);
+}
+
+.stack.top-consumer > .stack-header {
+    background: rgba(88, 166, 255, 0.1);
+    border-left: 3px solid var(--warning);
 }
 
 .container-name {
@@ -258,7 +269,8 @@ nav {
     margin-bottom: 20px;
 }
 
-.sort-btn {
+.sort-btn,
+.container-sort-btn {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     color: var(--text-secondary);
@@ -268,11 +280,13 @@ nav {
     margin-right: 10px;
 }
 
-.sort-btn:hover {
+.sort-btn:hover,
+.container-sort-btn:hover {
     background: var(--bg-tertiary);
 }
 
-.sort-btn.active {
+.sort-btn.active,
+.container-sort-btn.active {
     background: var(--accent);
     color: white;
     border-color: var(--accent);

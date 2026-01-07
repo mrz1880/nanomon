@@ -69,10 +69,13 @@ impl MonitoringService {
             }
         }
 
-        let stacks = stacks_map
+        let mut stacks: Vec<Stack> = stacks_map
             .into_iter()
             .map(|(name, containers)| Stack::from_containers(name, &containers))
             .collect();
+
+        // Sort stacks by CPU usage (descending) to highlight top consumers
+        stacks.sort_by(|a, b| b.cpu_percent.partial_cmp(&a.cpu_percent).unwrap_or(std::cmp::Ordering::Equal));
 
         Ok(stacks)
     }

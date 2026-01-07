@@ -1,6 +1,7 @@
 // State
 let currentTab = 'host';
 let currentSort = 'cpu';
+let currentContainerSort = 'cpu';
 let refreshInterval = 10000; // 10 seconds
 let intervalId = null;
 
@@ -41,6 +42,7 @@ function switchTab(tabName) {
 
 // Controls
 function initControls() {
+    // Process sort buttons
     const sortBtns = document.querySelectorAll('.sort-btn');
     sortBtns.forEach(btn => {
         btn.addEventListener('click', () => {
@@ -48,6 +50,17 @@ function initControls() {
             sortBtns.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             loadProcesses();
+        });
+    });
+
+    // Container sort buttons
+    const containerSortBtns = document.querySelectorAll('.container-sort-btn');
+    containerSortBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            currentContainerSort = btn.dataset.sort;
+            containerSortBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            loadContainers();
         });
     });
 }
@@ -127,11 +140,22 @@ async function loadContainers() {
 
     let html = '';
 
+    // Sort stacks based on current sort mode
+    const sortedStacks = [...data.stacks];
+    sortStacks(sortedStacks, currentContainerSort);
+
     // Group by stacks
-    data.stacks.forEach(stack => {
+    sortedStacks.forEach((stack, stackIdx) => {
         const stackContainers = data.containers.filter(c => c.stack === stack.name);
+
+        // Sort containers within stack
+        sortContainers(stackContainers, currentContainerSort);
+
+        // Highlight top stack only when sorting by CPU or Memory
+        const isTopStack = stackIdx === 0 && (currentContainerSort === 'cpu' || currentContainerSort === 'memory');
+
         html += `
-            <div class="stack">
+            <div class="stack ${isTopStack ? 'top-consumer' : ''}">
                 <div class="stack-header">
                     <span class="stack-name">▼ ${stack.name}</span>
                     <div class="stack-stats">
@@ -140,7 +164,7 @@ async function loadContainers() {
                         <span>RAM ${formatBytes(stack.memory_bytes)}</span>
                     </div>
                 </div>
-                ${stackContainers.map(c => renderContainer(c)).join('')}
+                ${stackContainers.map((c, idx) => renderContainer(c, idx === 0 && c.state === 'running' && (currentContainerSort === 'cpu' || currentContainerSort === 'memory'))).join('')}
             </div>
         `;
     });
@@ -148,9 +172,11 @@ async function loadContainers() {
     // Standalone containers
     const standalone = data.containers.filter(c => !c.stack);
     if (standalone.length > 0) {
-        html += standalone.map(c => `
+        sortContainers(standalone, currentContainerSort);
+
+        html += standalone.map((c, idx) => `
             <div class="stack">
-                ${renderContainer(c)}
+                ${renderContainer(c, idx === 0 && c.state === 'running' && (currentContainerSort === 'cpu' || currentContainerSort === 'memory'))}
             </div>
         `).join('');
     }
@@ -158,10 +184,44 @@ async function loadContainers() {
     containersList.innerHTML = html;
 }
 
-function renderContainer(container) {
+function sortStacks(stacks, sortBy) {
+    stacks.sort((a, b) => {
+        switch(sortBy) {
+            case 'cpu':
+                return b.cpu_percent - a.cpu_percent;
+            case 'memory':
+                return b.memory_bytes - a.memory_bytes;
+            case 'name':
+                return a.name.localeCompare(b.name);
+            default:
+                return 0;
+        }
+    });
+}
+
+function sortContainers(containers, sortBy) {
+    containers.sort((a, b) => {
+        switch(sortBy) {
+            case 'cpu':
+                const cpuA = a.state === 'running' ? a.cpu.usage_percent : -1;
+                const cpuB = b.state === 'running' ? b.cpu.usage_percent : -1;
+                return cpuB - cpuA;
+            case 'memory':
+                const memA = a.state === 'running' ? a.memory.used_bytes : -1;
+                const memB = b.state === 'running' ? b.memory.used_bytes : -1;
+                return memB - memA;
+            case 'name':
+                return a.name.localeCompare(b.name);
+            default:
+                return 0;
+        }
+    });
+}
+
+function renderContainer(container, isTopConsumer = false) {
     const statusClass = container.state === 'running' ? 'running' : 'stopped';
     return `
-        <div class="container-item">
+        <div class="container-item ${isTopConsumer ? 'top-consumer' : ''}">
             <div class="container-name">
                 <span class="status-dot ${statusClass}"></span>
                 <span>${container.name}</span>

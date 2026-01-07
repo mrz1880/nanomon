@@ -65,5 +65,6 @@ jobs:
 
       - name: Trigger Portainer webhook (production)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        continue-on-error: true
         run: |
-          curl -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}" || echo "Webhook failed (non-blocking)"
+          curl -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}"

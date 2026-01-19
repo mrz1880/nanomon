@@ -1,0 +1,53 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    ":automergeMinor",
+    "schedule:weekly"
+  ],
+  "labels": ["dependencies"],
+  "rangeStrategy": "bump",
+  "packageRules": [
+    {
+      "description": "Group Rust minor and patch updates",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "rust dependencies (minor/patch)",
+      "automerge": true
+    },
+    {
+      "description": "Group tokio ecosystem",
+      "matchManagers": ["cargo"],
+      "matchPackagePatterns": ["^tokio", "^tower"],
+      "groupName": "tokio ecosystem"
+    },
+    {
+      "description": "Group Docker base images",
+      "matchManagers": ["dockerfile"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "docker base images",
+      "automerge": true
+    },
+    {
+      "description": "Group GitHub Actions",
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions",
+      "automerge": true
+    },
+    {
+      "description": "Rust major updates require manual review",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    }
+  ],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 5am on monday"]
+  },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"]
+  }
+}

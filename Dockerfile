@@ -32,6 +32,7 @@ WORKDIR /app
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     ca-certificates \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy binary from builder
@@ -50,7 +51,7 @@ EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
-    CMD ["/app/nanomon", "health"] || exit 1
+    CMD curl -sf http://localhost:3000/api/health || exit 1
 
 # Run the binary
 CMD ["/app/nanomon"]

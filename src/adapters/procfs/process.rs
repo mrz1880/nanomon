@@ -46,7 +46,9 @@ impl ProcfsProcessSource {
         let uid = parser::parse_proc_status_uid(&status_content)?;
 
         // Get username from UID (simple approach)
-        let user = self.get_username_from_uid(uid).unwrap_or_else(|| uid.to_string());
+        let user = self
+            .get_username_from_uid(uid)
+            .unwrap_or_else(|| uid.to_string());
 
         // Read command from /proc/{pid}/cmdline
         let cmdline_content = fs::read_to_string(pid_path.join("cmdline")).unwrap_or_default();
@@ -113,7 +115,10 @@ impl ProcfsProcessSource {
         None
     }
 
-    fn get_container_id_from_cgroup(&self, pid: u32) -> Result<Option<crate::domain::ContainerId>, Box<dyn std::error::Error + Send + Sync>> {
+    fn get_container_id_from_cgroup(
+        &self,
+        pid: u32,
+    ) -> Result<Option<crate::domain::ContainerId>, Box<dyn std::error::Error + Send + Sync>> {
         let cgroup_path = self.config.proc_path.join(format!("{}/cgroup", pid));
         let content = fs::read_to_string(cgroup_path).unwrap_or_default();
 
@@ -136,7 +141,9 @@ impl ProcfsProcessSource {
 
 #[async_trait]
 impl ProcessSource for ProcfsProcessSource {
-    async fn list_processes(&self) -> Result<Vec<Process>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn list_processes(
+        &self,
+    ) -> Result<Vec<Process>, Box<dyn std::error::Error + Send + Sync>> {
         let pids = self.list_pids()?;
         let mut processes = Vec::new();
 
@@ -149,14 +156,20 @@ impl ProcessSource for ProcfsProcessSource {
         Ok(processes)
     }
 
-    async fn get_top_by_cpu(&self, n: usize) -> Result<Vec<Process>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn get_top_by_cpu(
+        &self,
+        n: usize,
+    ) -> Result<Vec<Process>, Box<dyn std::error::Error + Send + Sync>> {
         let mut processes = self.list_processes().await?;
         processes.sort_by(|a, b| b.cpu_percent.partial_cmp(&a.cpu_percent).unwrap());
         processes.truncate(n);
         Ok(processes)
     }
 
-    async fn get_top_by_memory(&self, n: usize) -> Result<Vec<Process>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn get_top_by_memory(
+        &self,
+        n: usize,
+    ) -> Result<Vec<Process>, Box<dyn std::error::Error + Send + Sync>> {
         let mut processes = self.list_processes().await?;
         processes.sort_by(|a, b| b.memory_bytes.cmp(&a.memory_bytes));
         processes.truncate(n);

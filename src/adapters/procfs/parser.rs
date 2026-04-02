@@ -67,7 +67,14 @@ pub struct CpuStat {
 
 impl CpuStat {
     pub fn total(&self) -> u64 {
-        self.user + self.nice + self.system + self.idle + self.iowait + self.irq + self.softirq + self.steal
+        self.user
+            + self.nice
+            + self.system
+            + self.idle
+            + self.iowait
+            + self.irq
+            + self.softirq
+            + self.steal
     }
 
     pub fn busy(&self) -> u64 {
@@ -92,14 +99,30 @@ pub fn parse_cpu_stat(content: &str) -> ParseResult<CpuStat> {
     }
 
     Ok(CpuStat {
-        user: parts[0].parse().map_err(|e| ParseError::Parse(format!("user: {}", e)))?,
-        nice: parts[1].parse().map_err(|e| ParseError::Parse(format!("nice: {}", e)))?,
-        system: parts[2].parse().map_err(|e| ParseError::Parse(format!("system: {}", e)))?,
-        idle: parts[3].parse().map_err(|e| ParseError::Parse(format!("idle: {}", e)))?,
-        iowait: parts[4].parse().map_err(|e| ParseError::Parse(format!("iowait: {}", e)))?,
-        irq: parts[5].parse().map_err(|e| ParseError::Parse(format!("irq: {}", e)))?,
-        softirq: parts[6].parse().map_err(|e| ParseError::Parse(format!("softirq: {}", e)))?,
-        steal: parts[7].parse().map_err(|e| ParseError::Parse(format!("steal: {}", e)))?,
+        user: parts[0]
+            .parse()
+            .map_err(|e| ParseError::Parse(format!("user: {}", e)))?,
+        nice: parts[1]
+            .parse()
+            .map_err(|e| ParseError::Parse(format!("nice: {}", e)))?,
+        system: parts[2]
+            .parse()
+            .map_err(|e| ParseError::Parse(format!("system: {}", e)))?,
+        idle: parts[3]
+            .parse()
+            .map_err(|e| ParseError::Parse(format!("idle: {}", e)))?,
+        iowait: parts[4]
+            .parse()
+            .map_err(|e| ParseError::Parse(format!("iowait: {}", e)))?,
+        irq: parts[5]
+            .parse()
+            .map_err(|e| ParseError::Parse(format!("irq: {}", e)))?,
+        softirq: parts[6]
+            .parse()
+            .map_err(|e| ParseError::Parse(format!("softirq: {}", e)))?,
+        steal: parts[7]
+            .parse()
+            .map_err(|e| ParseError::Parse(format!("steal: {}", e)))?,
     })
 }
 
@@ -181,8 +204,12 @@ pub fn parse_proc_stat(content: &str) -> ParseResult<(u32, u32, char, u64, u64, 
     // Format: pid (comm) state ppid ... utime stime ...
     // Need to handle comm with spaces and parentheses
 
-    let start = content.find('(').ok_or_else(|| ParseError::Parse("No ( found".to_string()))?;
-    let end = content.rfind(')').ok_or_else(|| ParseError::Parse("No ) found".to_string()))?;
+    let start = content
+        .find('(')
+        .ok_or_else(|| ParseError::Parse("No ( found".to_string()))?;
+    let end = content
+        .rfind(')')
+        .ok_or_else(|| ParseError::Parse("No ) found".to_string()))?;
 
     let pid_str = content[..start].trim();
     let after_comm = &content[end + 1..];
@@ -192,12 +219,22 @@ pub fn parse_proc_stat(content: &str) -> ParseResult<(u32, u32, char, u64, u64, 
         return Err(ParseError::Parse("Incomplete proc stat".to_string()));
     }
 
-    let pid: u32 = pid_str.parse().map_err(|e| ParseError::Parse(format!("pid: {}", e)))?;
+    let pid: u32 = pid_str
+        .parse()
+        .map_err(|e| ParseError::Parse(format!("pid: {}", e)))?;
     let state = parts[0].chars().next().unwrap_or('?');
-    let ppid: u32 = parts[1].parse().map_err(|e| ParseError::Parse(format!("ppid: {}", e)))?;
-    let utime: u64 = parts[11].parse().map_err(|e| ParseError::Parse(format!("utime: {}", e)))?;
-    let stime: u64 = parts[12].parse().map_err(|e| ParseError::Parse(format!("stime: {}", e)))?;
-    let rss: u64 = parts[21].parse().map_err(|e| ParseError::Parse(format!("rss: {}", e)))?;
+    let ppid: u32 = parts[1]
+        .parse()
+        .map_err(|e| ParseError::Parse(format!("ppid: {}", e)))?;
+    let utime: u64 = parts[11]
+        .parse()
+        .map_err(|e| ParseError::Parse(format!("utime: {}", e)))?;
+    let stime: u64 = parts[12]
+        .parse()
+        .map_err(|e| ParseError::Parse(format!("stime: {}", e)))?;
+    let rss: u64 = parts[21]
+        .parse()
+        .map_err(|e| ParseError::Parse(format!("rss: {}", e)))?;
 
     Ok((pid, ppid, state, utime, stime, rss))
 }

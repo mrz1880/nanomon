@@ -46,13 +46,7 @@ pub struct Process {
 }
 
 impl Process {
-    pub fn new(
-        pid: u32,
-        ppid: u32,
-        user: String,
-        command: String,
-        state: ProcessState,
-    ) -> Self {
+    pub fn new(pid: u32, ppid: u32, user: String, command: String, state: ProcessState) -> Self {
         Self {
             pid,
             ppid,
@@ -66,7 +60,12 @@ impl Process {
         }
     }
 
-    pub fn with_metrics(mut self, cpu_percent: f64, memory_percent: f64, memory_bytes: u64) -> Self {
+    pub fn with_metrics(
+        mut self,
+        cpu_percent: f64,
+        memory_percent: f64,
+        memory_bytes: u64,
+    ) -> Self {
         self.cpu_percent = cpu_percent;
         self.memory_percent = memory_percent;
         self.memory_bytes = memory_bytes;

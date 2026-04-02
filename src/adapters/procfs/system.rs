@@ -3,7 +3,10 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 
-use crate::domain::{CpuMetrics, Disk, LoadAverage, MemoryMetrics, NetworkInterface, NetworkMetrics};
+use crate::domain::{
+    CpuMetrics, Disk, LoadAverage, MemoryMetrics, NetworkInterface, NetworkMetrics, Temperature,
+    TemperatureSource,
+};
 use crate::ports::{HostInfo, SystemSource};
 
 use super::parser::{self, CpuStat};
@@ -32,11 +35,7 @@ impl ProcfsSystemSource {
         Ok(content.trim().to_string())
     }
 
-    fn calculate_cpu_metrics(
-        &self,
-        current: &CpuStat,
-        previous: Option<&CpuStat>,
-    ) -> CpuMetrics {
+    fn calculate_cpu_metrics(&self, current: &CpuStat, previous: Option<&CpuStat>) -> CpuMetrics {
         let prev = match previous {
             Some(p) => p,
             None => {
@@ -50,7 +49,8 @@ impl ProcfsSystemSource {
             return CpuMetrics::new(0.0, 0.0, 0.0).with_iowait(0.0);
         }
 
-        let user_delta = current.user.saturating_sub(prev.user) + current.nice.saturating_sub(prev.nice);
+        let user_delta =
+            current.user.saturating_sub(prev.user) + current.nice.saturating_sub(prev.nice);
         let system_delta = current.system.saturating_sub(prev.system)
             + current.irq.saturating_sub(prev.irq)
             + current.softirq.saturating_sub(prev.softirq);
@@ -73,7 +73,9 @@ impl SystemSource for ProcfsSystemSource {
         let uptime_content = fs::read_to_string(&uptime_path)?;
         let uptime_seconds = parser::parse_uptime(&uptime_content)?;
 
-        let hostname = self.get_hostname().unwrap_or_else(|_| "unknown".to_string());
+        let hostname = self
+            .get_hostname()
+            .unwrap_or_else(|_| "unknown".to_string());
 
         Ok(HostInfo {
             hostname,
@@ -81,7 +83,9 @@ impl SystemSource for ProcfsSystemSource {
         })
     }
 
-    async fn get_cpu_metrics(&self) -> Result<CpuMetrics, Box<dyn std::error::Error + Send + Sync>> {
+    async fn get_cpu_metrics(
+        &self,
+    ) -> Result<CpuMetrics, Box<dyn std::error::Error + Send + Sync>> {
         let stat_path = self.config.proc_path.join("stat");
         let stat_content = fs::read_to_string(&stat_path)?;
         let current_stat = parser::parse_cpu_stat(&stat_content)?;
@@ -93,7 +97,9 @@ impl SystemSource for ProcfsSystemSource {
         Ok(metrics)
     }
 
-    async fn get_memory_metrics(&self) -> Result<MemoryMetrics, Box<dyn std::error::Error + Send + Sync>> {
+    async fn get_memory_metrics(
+        &self,
+    ) -> Result<MemoryMetrics, Box<dyn std::error::Error + Send + Sync>> {
         let meminfo_path = self.config.proc_path.join("meminfo");
         let meminfo_content = fs::read_to_string(&meminfo_path)?;
         let meminfo = parser::parse_meminfo(&meminfo_content)?;
@@ -113,7 +119,9 @@ impl SystemSource for ProcfsSystemSource {
             .with_swap(swap_used))
     }
 
-    async fn get_load_average(&self) -> Result<LoadAverage, Box<dyn std::error::Error + Send + Sync>> {
+    async fn get_load_average(
+        &self,
+    ) -> Result<LoadAverage, Box<dyn std::error::Error + Send + Sync>> {
         let loadavg_path = self.config.proc_path.join("loadavg");
         let loadavg_content = fs::read_to_string(&loadavg_path)?;
         let (one, five, fifteen) = parser::parse_loadavg(&loadavg_content)?;
@@ -129,7 +137,24 @@ impl SystemSource for ProcfsSystemSource {
         let mut disks = Vec::new();
 
         // Filter to only real filesystems and skip common virtual ones
-        let skip_fs = ["proc", "sysfs", "tmpfs", "devtmpfs", "devpts", "cgroup", "cgroup2", "securityfs", "debugfs", "mqueue", "binfmt_misc", "pstore", "efivarfs", "bpf", "tracefs", "fuse"];
+        let skip_fs = [
+            "proc",
+            "sysfs",
+            "tmpfs",
+            "devtmpfs",
+            "devpts",
+            "cgroup",
+            "cgroup2",
+            "securityfs",
+            "debugfs",
+            "mqueue",
+            "binfmt_misc",
+            "pstore",
+            "efivarfs",
+            "bpf",
+            "tracefs",
+            "fuse",
+        ];
 
         for mount in mounts {
             if skip_fs.contains(&mount.filesystem.as_str()) {
@@ -163,7 +188,9 @@ impl SystemSource for ProcfsSystemSource {
         Ok(disks)
     }
 
-    async fn list_network_interfaces(&self) -> Result<Vec<NetworkInterface>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn list_network_interfaces(
+        &self,
+    ) -> Result<Vec<NetworkInterface>, Box<dyn std::error::Error + Send + Sync>> {
         let net_class_path = self.config.sys_path.join("class/net");
         let mut interfaces = Vec::new();
 
@@ -185,7 +212,9 @@ impl SystemSource for ProcfsSystemSource {
                 .map(|s| s.trim() == "up")
                 .unwrap_or(false);
 
-            if let Ok((rx_bytes, tx_bytes, rx_errors, tx_errors)) = parser::parse_net_stats(&stats_dir) {
+            if let Ok((rx_bytes, tx_bytes, rx_errors, tx_errors)) =
+                parser::parse_net_stats(&stats_dir)
+            {
                 interfaces.push(NetworkInterface::new(
                     interface_name,
                     is_up,
@@ -195,6 +224,125 @@ impl SystemSource for ProcfsSystemSource {
         }
 
         Ok(interfaces)
+    }
+
+    async fn get_temperatures(
+        &self,
+    ) -> Result<Vec<Temperature>, Box<dyn std::error::Error + Send + Sync>> {
+        let mut temps = Vec::new();
+
+        // Try hwmon sensors first (more reliable on NAS)
+        let hwmon_path = self.config.sys_path.join("class/hwmon");
+        if let Ok(entries) = fs::read_dir(&hwmon_path) {
+            for entry in entries.flatten() {
+                let hwmon_dir = entry.path();
+                let device_name = fs::read_to_string(hwmon_dir.join("name"))
+                    .map(|s| s.trim().to_string())
+                    .unwrap_or_default();
+
+                // Scan temp*_input files
+                for i in 1..=16 {
+                    let input_path = hwmon_dir.join(format!("temp{}_input", i));
+                    let millidegrees = match fs::read_to_string(&input_path) {
+                        Ok(s) => match s.trim().parse::<i64>() {
+                            Ok(v) => v,
+                            Err(_) => continue,
+                        },
+                        Err(_) => break, // No more temp sensors in this hwmon
+                    };
+
+                    let label = fs::read_to_string(hwmon_dir.join(format!("temp{}_label", i)))
+                        .map(|s| s.trim().to_string())
+                        .unwrap_or_else(|_| {
+                            if device_name.is_empty() {
+                                format!("temp{}", i)
+                            } else {
+                                format!("{} temp{}", device_name, i)
+                            }
+                        });
+
+                    let source = if device_name.contains("coretemp")
+                        || device_name.contains("k10temp")
+                        || device_name.contains("cpu")
+                        || label.to_lowercase().contains("cpu")
+                        || label.to_lowercase().contains("core")
+                        || label.to_lowercase().contains("package")
+                    {
+                        TemperatureSource::Cpu
+                    } else if device_name.contains("nvme")
+                        || device_name.contains("drivetemp")
+                        || label.to_lowercase().contains("disk")
+                    {
+                        TemperatureSource::Disk
+                    } else {
+                        TemperatureSource::Other
+                    };
+
+                    let high = fs::read_to_string(hwmon_dir.join(format!("temp{}_max", i)))
+                        .ok()
+                        .and_then(|s| s.trim().parse::<i64>().ok())
+                        .map(|v| v as f64 / 1000.0);
+
+                    let critical = fs::read_to_string(hwmon_dir.join(format!("temp{}_crit", i)))
+                        .ok()
+                        .and_then(|s| s.trim().parse::<i64>().ok())
+                        .map(|v| v as f64 / 1000.0);
+
+                    temps.push(
+                        Temperature::new(label, source, millidegrees as f64 / 1000.0)
+                            .with_thresholds(high, critical),
+                    );
+                }
+            }
+        }
+
+        // Fallback: thermal zones (less detailed but widely available)
+        if temps.is_empty() {
+            let thermal_path = self.config.sys_path.join("class/thermal");
+            if let Ok(entries) = fs::read_dir(&thermal_path) {
+                for entry in entries.flatten() {
+                    let zone_dir = entry.path();
+                    let name = zone_dir
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
+                    if !name.starts_with("thermal_zone") {
+                        continue;
+                    }
+
+                    let temp_millidegrees = match fs::read_to_string(zone_dir.join("temp")) {
+                        Ok(s) => match s.trim().parse::<i64>() {
+                            Ok(v) => v,
+                            Err(_) => continue,
+                        },
+                        Err(_) => continue,
+                    };
+
+                    let zone_type = fs::read_to_string(zone_dir.join("type"))
+                        .map(|s| s.trim().to_string())
+                        .unwrap_or_else(|_| name.clone());
+
+                    let source = if zone_type.contains("cpu")
+                        || zone_type.contains("x86_pkg")
+                        || zone_type.contains("acpitz")
+                    {
+                        TemperatureSource::Cpu
+                    } else {
+                        TemperatureSource::Other
+                    };
+
+                    temps.push(Temperature::new(
+                        zone_type,
+                        source,
+                        temp_millidegrees as f64 / 1000.0,
+                    ));
+                }
+            }
+        }
+
+        tracing::debug!("Found {} temperature sensors", temps.len());
+        Ok(temps)
     }
 }
 

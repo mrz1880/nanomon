@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     Container, CpuMetrics, Disk, LoadAverage, MemoryMetrics, MonitoredResource, NetworkInterface,
-    Process, ResourceType,
+    Process, ResourceType, Temperature,
 };
 
 /// Host aggregate root
@@ -18,6 +18,7 @@ pub struct Host {
     pub disks: Vec<Disk>,
     pub containers: Vec<Container>,
     pub processes: Vec<Process>,
+    pub temperatures: Vec<Temperature>,
     pub timestamp: DateTime<Utc>,
 }
 
@@ -33,6 +34,7 @@ impl Host {
             disks: Vec::new(),
             containers: Vec::new(),
             processes: Vec::new(),
+            temperatures: Vec::new(),
             timestamp: Utc::now(),
         }
     }
@@ -68,6 +70,11 @@ impl Host {
 
     pub fn with_processes(mut self, processes: Vec<Process>) -> Self {
         self.processes = processes;
+        self
+    }
+
+    pub fn with_temperatures(mut self, temperatures: Vec<Temperature>) -> Self {
+        self.temperatures = temperatures;
         self
     }
 

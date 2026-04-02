@@ -1,0 +1,42 @@
+# NanoMon Alert Configuration Example
+# Copy this file and set NANOMON_ALERT_CONFIG=/path/to/alerts.toml
+
+[[rules]]
+name = "High CPU"
+metric = "cpu_usage"
+condition = "above"
+threshold = 90.0
+webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+cooldown_seconds = 300
+
+[[rules]]
+name = "High Memory"
+metric = "memory_usage"
+condition = "above"
+threshold = 85.0
+webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+cooldown_seconds = 300
+
+[[rules]]
+name = "Disk Almost Full"
+metric = { disk_usage = { mount_point = "/" } }
+condition = "above"
+threshold = 90.0
+webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+cooldown_seconds = 600
+
+[[rules]]
+name = "High Load"
+metric = "load_average_1m"
+condition = "above"
+threshold = 8.0
+webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+cooldown_seconds = 300
+
+[[rules]]
+name = "CPU Overheating"
+metric = { temperature = { label = "Package id 0" } }
+condition = "above"
+threshold = 85.0
+webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+cooldown_seconds = 60

@@ -1,22 +1,18 @@
 use std::sync::Arc;
 
-use axum::{
-    routing::get,
-    Router,
-};
+use axum::{routing::get, Router};
 use tower_http::{cors::CorsLayer, services::ServeDir};
 
 use crate::application::MonitoringService;
 
 use super::handlers::{
-    containers_handler, dashboard_handler, disks_handler, health_handler, host_handler,
-    network_handler, processes_handler, AppState,
+    containers_handler, dashboard_handler, disks_handler, health_handler, history_handler,
+    host_handler, network_handler, processes_handler, prometheus_handler, services_handler,
+    AppState,
 };
 
 pub fn create_router(monitoring_service: Arc<MonitoringService>) -> Router {
-    let state = AppState {
-        monitoring_service,
-    };
+    let state = AppState { monitoring_service };
 
     Router::new()
         // API routes
@@ -27,6 +23,10 @@ pub fn create_router(monitoring_service: Arc<MonitoringService>) -> Router {
         .route("/api/disks", get(disks_handler))
         .route("/api/network", get(network_handler))
         .route("/api/dashboard", get(dashboard_handler))
+        .route("/api/history", get(history_handler))
+        .route("/api/services", get(services_handler))
+        // Prometheus metrics
+        .route("/metrics", get(prometheus_handler))
         // Serve static files
         .nest_service("/static", ServeDir::new("src/interface/web/static"))
         .fallback_service(ServeDir::new("src/interface/web/static"))

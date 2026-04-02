@@ -5,9 +5,7 @@ use std::path::PathBuf;
 #[derive(Debug, Clone)]
 pub struct Config {
     pub port: u16,
-    #[allow(dead_code)]
     pub poll_interval: u64,
-    #[allow(dead_code)]
     pub history_size: usize,
     #[allow(dead_code)]
     pub process_limit: usize,
@@ -16,6 +14,8 @@ pub struct Config {
     pub proc_path: PathBuf,
     pub sys_path: PathBuf,
     pub log_level: String,
+    pub enable_systemd: bool,
+    pub alert_config_path: Option<PathBuf>,
 }
 
 impl Config {
@@ -46,6 +46,10 @@ impl Config {
                 .map(PathBuf::from)
                 .unwrap_or_else(|_| PathBuf::from("/sys")),
             log_level: env::var("NANOMON_LOG_LEVEL").unwrap_or_else(|_| "info".to_string()),
+            enable_systemd: env::var("NANOMON_ENABLE_SYSTEMD")
+                .map(|s| s == "true" || s == "1")
+                .unwrap_or(false),
+            alert_config_path: env::var("NANOMON_ALERT_CONFIG").ok().map(PathBuf::from),
         }
     }
 }

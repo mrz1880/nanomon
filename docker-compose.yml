@@ -16,6 +16,8 @@ services:
       - NANOMON_PROC_PATH=/host/proc
       - NANOMON_SYS_PATH=/host/sys
       - NANOMON_LOG_LEVEL=info
+      # - NANOMON_ENABLE_SYSTEMD=true
+      # - NANOMON_ALERT_CONFIG=/etc/nanomon/alerts.toml
     restart: unless-stopped
     # Required to read host processes
     pid: host

@@ -4,7 +4,9 @@ use bollard::Docker;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 
-use crate::domain::{Container, ContainerId, ContainerState, CpuMetrics, IoMetrics, MemoryMetrics, NetworkMetrics};
+use crate::domain::{
+    Container, ContainerId, ContainerState, CpuMetrics, IoMetrics, MemoryMetrics, NetworkMetrics,
+};
 use crate::ports::{ContainerSource, ContainerStats};
 
 /// Docker adapter using bollard client
@@ -19,7 +21,9 @@ impl DockerAdapter {
     }
 
     #[allow(dead_code)]
-    pub fn with_socket(socket_path: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    pub fn with_socket(
+        socket_path: &str,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let client = Docker::connect_with_socket(socket_path, 120, bollard::API_DEFAULT_VERSION)?;
         Ok(Self { client })
     }
@@ -69,10 +73,7 @@ impl DockerAdapter {
             }),
         );
 
-        let stats = stream
-            .next()
-            .await
-            .ok_or("No stats available")??;
+        let stats = stream.next().await.ok_or("No stats available")??;
 
         // Calculate CPU percentage
         let cpu_delta = stats.cpu_stats.cpu_usage.total_usage as f64
@@ -132,7 +133,9 @@ impl DockerAdapter {
 
 #[async_trait]
 impl ContainerSource for DockerAdapter {
-    async fn list_containers(&self) -> Result<Vec<Container>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn list_containers(
+        &self,
+    ) -> Result<Vec<Container>, Box<dyn std::error::Error + Send + Sync>> {
         let options = Some(ListContainersOptions::<String> {
             all: true,
             ..Default::default()
@@ -144,7 +147,9 @@ impl ContainerSource for DockerAdapter {
         for container_summary in containers_list {
             let id = ContainerId::new(container_summary.id.unwrap_or_default());
             let name = Self::parse_container_name(&container_summary.names);
-            let image = container_summary.image.unwrap_or_else(|| "unknown".to_string());
+            let image = container_summary
+                .image
+                .unwrap_or_else(|| "unknown".to_string());
             let state = Self::map_container_state(&container_summary.state);
             let created = container_summary.created.unwrap_or(0);
             let created_at = DateTime::<Utc>::from_timestamp(created, 0).unwrap_or_else(Utc::now);
@@ -152,7 +157,8 @@ impl ContainerSource for DockerAdapter {
             let labels = container_summary.labels.unwrap_or_default();
             let stack = Self::extract_stack_name(&labels);
 
-            let mut container = Container::new(id.clone(), name, image, state, created_at).with_stack(stack);
+            let mut container =
+                Container::new(id.clone(), name, image, state, created_at).with_stack(stack);
 
             // Get stats for running containers only
             if state.is_running() {

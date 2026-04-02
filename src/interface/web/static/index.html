@@ -12,12 +12,14 @@
             <h1>NanoMon</h1>
             <nav>
                 <button class="tab-btn active" data-tab="host">Host</button>
+                <button class="tab-btn" data-tab="charts">Charts</button>
                 <button class="tab-btn" data-tab="containers">Containers</button>
                 <button class="tab-btn" data-tab="processes">Processes</button>
                 <button class="tab-btn" data-tab="disks">Disks</button>
+                <button class="tab-btn" data-tab="services">Services</button>
             </nav>
             <div class="refresh-info">
-                <span id="refresh-interval">⟳ 10s</span>
+                <span id="refresh-interval">&#8635; 10s</span>
             </div>
         </header>
 
@@ -45,7 +47,7 @@
                     </div>
                     <div class="metric-details">
                         <span id="cpu-percent">0%</span>
-                        <span id="cpu-details">user 0% · sys 0% · iowait 0%</span>
+                        <span id="cpu-details">user 0% &middot; sys 0% &middot; iowait 0%</span>
                     </div>
                 </div>
 
@@ -63,9 +65,33 @@
                 <div class="metric-card">
                     <h3>NET</h3>
                     <div class="net-stats">
-                        <div>▼ <span id="net-rx">0 MB/s</span></div>
-                        <div>▲ <span id="net-tx">0 MB/s</span></div>
+                        <div>&#9660; <span id="net-rx">0 MB/s</span></div>
+                        <div>&#9650; <span id="net-tx">0 MB/s</span></div>
                     </div>
+                </div>
+            </div>
+
+            <!-- Temperatures (shown only when available) -->
+            <div id="temperatures-section" class="temperatures-section" style="display: none;">
+                <h3>TEMPERATURES</h3>
+                <div id="temperatures-grid" class="temperatures-grid"></div>
+            </div>
+        </section>
+
+        <!-- Charts Tab -->
+        <section id="charts-tab" class="tab-content">
+            <div class="charts-grid">
+                <div class="chart-card">
+                    <h3>CPU Usage</h3>
+                    <canvas id="chart-cpu" width="600" height="200"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>Memory Usage</h3>
+                    <canvas id="chart-memory" width="600" height="200"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>Load Average</h3>
+                    <canvas id="chart-load" width="600" height="200"></canvas>
                 </div>
             </div>
         </section>
@@ -120,6 +146,13 @@
                     <tr><td colspan="5" class="loading">Loading disks...</td></tr>
                 </tbody>
             </table>
+        </section>
+
+        <!-- Services Tab -->
+        <section id="services-tab" class="tab-content">
+            <div id="services-content">
+                <p class="loading">Loading services...</p>
+            </div>
         </section>
     </div>
 

@@ -1,7 +1,9 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use super::{CpuMetrics, IoMetrics, MemoryMetrics, MonitoredResource, NetworkMetrics, ResourceType};
+use super::{
+    CpuMetrics, IoMetrics, MemoryMetrics, MonitoredResource, NetworkMetrics, ResourceType,
+};
 
 /// Unique identifier for a container
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

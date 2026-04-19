@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use axum::{
     debug_handler,
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
@@ -352,6 +352,27 @@ pub async fn services_handler(State(state): State<AppState>) -> Response {
         }),
     )
         .into_response()
+}
+
+/// Handler for GET /api/containers/:name
+#[debug_handler]
+pub async fn container_detail_handler(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> Response {
+    let containers = match state.monitoring_service.get_containers().await {
+        Ok(c) => c,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    };
+
+    match containers.into_iter().find(|c| c.name == name) {
+        Some(container) => (StatusCode::OK, Json(container)).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            format!("Container '{}' not found", name),
+        )
+            .into_response(),
+    }
 }
 
 /// Handler for GET /metrics (Prometheus text exposition format)

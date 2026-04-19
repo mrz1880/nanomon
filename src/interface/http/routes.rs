@@ -6,9 +6,9 @@ use tower_http::{cors::CorsLayer, services::ServeDir};
 use crate::application::MonitoringService;
 
 use super::handlers::{
-    containers_handler, dashboard_handler, disks_handler, health_handler, history_handler,
-    host_handler, network_handler, processes_handler, prometheus_handler, services_handler,
-    AppState,
+    container_detail_handler, containers_handler, dashboard_handler, disks_handler, health_handler,
+    history_handler, host_handler, network_handler, processes_handler, prometheus_handler,
+    services_handler, AppState,
 };
 
 pub fn create_router(monitoring_service: Arc<MonitoringService>) -> Router {
@@ -19,6 +19,7 @@ pub fn create_router(monitoring_service: Arc<MonitoringService>) -> Router {
         .route("/api/health", get(health_handler))
         .route("/api/host", get(host_handler))
         .route("/api/containers", get(containers_handler))
+        .route("/api/containers/{name}", get(container_detail_handler))
         .route("/api/processes", get(processes_handler))
         .route("/api/disks", get(disks_handler))
         .route("/api/network", get(network_handler))

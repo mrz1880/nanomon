@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initTabs();
     initControls();
     window.addEventListener('hashchange', onHashChange);
+    checkServicesAvailable();
     onHashChange(); // Route from initial URL
     startRefresh();
 });
@@ -693,6 +694,21 @@ function renderServiceTable(services) {
             </tbody>
         </table>
     `;
+}
+
+// ---- Feature detection ----
+
+async function checkServicesAvailable() {
+    try {
+        const response = await fetch('/api/services');
+        const data = await response.json();
+        if (!data.available) {
+            const btn = document.querySelector('.tab-btn[data-tab="services"]');
+            if (btn) btn.style.display = 'none';
+        }
+    } catch (_) {
+        // ignore
+    }
 }
 
 // ---- Utilities ----

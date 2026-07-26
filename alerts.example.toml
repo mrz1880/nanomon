@@ -27,7 +27,7 @@ cooldown_seconds = 600
 
 [[rules]]
 name = "High Load"
-metric = "load_average_1m"
+metric = "load_average1m"
 condition = "above"
 threshold = 8.0
 webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"

@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**🚀 Lightweight NAS monitoring tool with < 15 MB RAM footprint**
+**🚀 Lightweight self-hosted server & NAS monitoring with < 15 MB RAM footprint**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-1.83%2B-orange.svg)](https://www.rust-lang.org/)
@@ -18,7 +18,7 @@
 
 ## 📖 Overview
 
-NanoMon is a **minimalist monitoring solution** designed for **resource-constrained environments** like NAS devices (Ugreen, Synology, QNAP, TrueNAS, etc.). It provides real-time insights into:
+NanoMon is a **minimalist monitoring solution** for **self-hosted servers and NAS devices** in **resource-constrained environments** (Ugreen, Synology, QNAP, TrueNAS, a Raspberry Pi, a VPS…). It provides real-time insights into:
 
 - 🐳 Docker containers (with Compose stack grouping)
 - 💻 System processes (CPU, memory usage)

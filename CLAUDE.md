@@ -2,9 +2,9 @@
 
 ## Project Overview
 
-**NanoMon** is a lightweight monitoring tool for NAS devices with strict resource constraints (< 15 MB RAM, < 1% CPU). It monitors Docker containers, system processes, host metrics (CPU, RAM, load, disks, network), with a clean web UI and REST API.
+**NanoMon** is a lightweight monitoring tool for self-hosted servers and NAS devices with strict resource constraints (< 15 MB RAM, < 1% CPU). It monitors Docker containers, system processes, host metrics (CPU, RAM, load, disks, network), temperatures and systemd services, with alerting, a Prometheus endpoint, a clean web UI and REST API.
 
-**Target environment**: ARM64 NAS (Ugreen, Synology, etc.) running Docker
+**Target environment**: Linux servers and NAS (Ugreen, Synology, Raspberry Pi, VPS, etc.) running Docker. NAS remains a primary use case, but the scope is general server monitoring.
 
 ## Architecture Principles
 

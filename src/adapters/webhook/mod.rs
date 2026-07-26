@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 
-use crate::domain::AlertEvent;
+use crate::domain::{AlertEvent, ServiceAlertEvent};
 use crate::ports::AlertSink;
 
 /// Sends alert events as JSON via HTTP POST to a webhook URL
@@ -38,6 +38,26 @@ impl AlertSink for WebhookSink {
             );
         } else {
             tracing::info!("Alert '{}' sent to webhook", event.rule_name);
+        }
+
+        Ok(())
+    }
+
+    async fn send_service_alert(
+        &self,
+        url: &str,
+        event: &ServiceAlertEvent,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let response = self.client.post(url).json(event).send().await?;
+
+        if !response.status().is_success() {
+            tracing::warn!(
+                "Webhook returned status {} for service alert '{}'",
+                response.status(),
+                event.rule_name
+            );
+        } else {
+            tracing::info!("Service alert '{}' sent to webhook", event.rule_name);
         }
 
         Ok(())

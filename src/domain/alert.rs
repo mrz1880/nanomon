@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use super::ServiceState;
+
 /// A rule defining when an alert should fire
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlertRule {
@@ -52,6 +54,32 @@ pub struct AlertEvent {
     pub current_value: f64,
     pub threshold: f64,
     pub condition: String,
+    pub hostname: String,
+    pub timestamp: String,
+}
+
+/// A rule that fires when a systemd unit enters a "bad" state.
+///
+/// Kept distinct from the numeric [`AlertRule`] because service health is
+/// categorical (a set of states), not a threshold comparison.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ServiceAlertRule {
+    pub name: String,
+    /// systemd unit name (without the `.service` suffix, e.g. `nginx`).
+    pub unit: String,
+    /// States considered "bad" — the alert fires when the unit enters one.
+    pub alert_when: Vec<ServiceState>,
+    pub webhook_url: String,
+    #[serde(default = "default_cooldown")]
+    pub cooldown_seconds: u64,
+}
+
+/// An alert event fired when a systemd unit enters a bad state.
+#[derive(Debug, Clone, Serialize)]
+pub struct ServiceAlertEvent {
+    pub rule_name: String,
+    pub unit: String,
+    pub state: String,
     pub hostname: String,
     pub timestamp: String,
 }

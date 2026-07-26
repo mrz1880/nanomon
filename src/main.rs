@@ -15,7 +15,7 @@ use adapters::{
 };
 use application::{AlertEvaluator, Collector, MonitoringService};
 use config::Config;
-use domain::AlertRule;
+use domain::{AlertRule, ServiceAlertRule};
 use interface::http::create_router;
 
 #[tokio::main]
@@ -132,28 +132,44 @@ fn load_alert_evaluator(config: &Config) -> Option<Arc<AlertEvaluator>> {
         }
     };
 
-    let rules: Vec<AlertRule> = match toml::from_str(&content) {
-        Ok(config) => {
-            let parsed: AlertConfig = config;
-            parsed.rules
-        }
+    let parsed: AlertConfig = match toml::from_str(&content) {
+        Ok(config) => config,
         Err(e) => {
             warn!("Failed to parse alert config: {}", e);
             return None;
         }
     };
 
-    if rules.is_empty() {
+    let AlertConfig {
+        rules,
+        service_rules,
+    } = parsed;
+
+    if rules.is_empty() && service_rules.is_empty() {
         return None;
     }
 
-    info!("Loaded {} alert rules from {:?}", rules.len(), path);
+    if !service_rules.is_empty() && !config.enable_systemd {
+        warn!(
+            "Service alert rules are configured but systemd is disabled \
+             (set NANOMON_ENABLE_SYSTEMD=true); they will not fire"
+        );
+    }
+
+    info!(
+        "Loaded {} metric rule(s) and {} service rule(s) from {:?}",
+        rules.len(),
+        service_rules.len(),
+        path
+    );
     let sink = Arc::new(WebhookSink::new());
-    Some(Arc::new(AlertEvaluator::new(rules, sink)))
+    Some(Arc::new(AlertEvaluator::new(rules, service_rules, sink)))
 }
 
 #[derive(serde::Deserialize)]
 struct AlertConfig {
     #[serde(default)]
     rules: Vec<AlertRule>,
+    #[serde(default)]
+    service_rules: Vec<ServiceAlertRule>,
 }

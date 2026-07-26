@@ -9,7 +9,7 @@ pub mod resource;
 pub mod service;
 pub mod temperature;
 
-pub use alert::{AlertEvent, AlertMetric, AlertRule};
+pub use alert::{AlertEvent, AlertMetric, AlertRule, ServiceAlertEvent, ServiceAlertRule};
 pub use container::{Container, ContainerId, ContainerState, Stack};
 pub use disk::Disk;
 pub use host::Host;

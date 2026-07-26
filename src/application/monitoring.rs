@@ -11,6 +11,7 @@ pub struct SlowResources {
     pub temperatures: Vec<Temperature>,
     pub containers: Vec<Container>,
     pub processes: Vec<Process>,
+    pub services: Vec<SystemdService>,
 }
 
 /// Main application service for monitoring
@@ -117,11 +118,15 @@ impl MonitoringService {
             .await
             .unwrap_or_default();
 
+        // Services are optional (systemd may be disabled/unavailable).
+        let services = self.get_services().await.unwrap_or_default();
+
         Ok(SlowResources {
             disks,
             temperatures,
             containers,
             processes,
+            services,
         })
     }
 

@@ -40,3 +40,21 @@ condition = "above"
 threshold = 85.0
 webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
 cooldown_seconds = 60
+
+# Systemd service rules (require NANOMON_ENABLE_SYSTEMD=true).
+# Fire when a unit *enters* one of the `alert_when` states (on transition, not
+# on every cycle) and stay quiet while it remains down. A recovery followed by a
+# new failure alerts again. `cooldown_seconds` suppresses rapid flapping.
+[[service_rules]]
+name = "nginx down"
+unit = "nginx"                    # unit name without the .service suffix
+alert_when = ["failed", "inactive"]
+webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+cooldown_seconds = 300
+
+[[service_rules]]
+name = "worker failed"
+unit = "myworker"
+alert_when = ["failed"]
+webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+cooldown_seconds = 300

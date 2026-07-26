@@ -145,6 +145,7 @@ impl Collector {
             .with_temperatures(resources.temperatures)
             .with_containers(resources.containers)
             .with_processes(resources.processes)
+            .with_services(resources.services)
             .with_timestamp(Utc::now());
 
         if let Some(alert) = &self.alert {

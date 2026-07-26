@@ -1,0 +1,13 @@
+# cargo-mutants configuration.
+#
+# Focus mutation testing on business logic that carries unit tests. Skip the
+# I/O adapters (Docker, procfs), the HTTP interface and the wiring entrypoint —
+# those are integration-test territory, so mutants there only report the absence
+# of integration tests (already visible in coverage), not weak assertions.
+exclude_globs = [
+    "src/main.rs",
+    "src/interface/**",
+    "src/adapters/docker/**",
+    "src/adapters/procfs/**",
+    "src/ports/**",
+]

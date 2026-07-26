@@ -1,0 +1,31 @@
+name: Mutation testing
+
+# Mutation testing is slower than the unit suite, so it runs on a weekly
+# schedule and on demand rather than on every push. Scope lives in
+# .cargo/mutants.toml (business logic only).
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * 1" # Mondays 04:00 UTC
+
+concurrency:
+  group: mutants-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mutants:
+    name: cargo-mutants
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-mutants
+      - name: Run mutation testing
+        run: cargo mutants --no-shuffle -j 2
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutants-out
+          path: mutants.out

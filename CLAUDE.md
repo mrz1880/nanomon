@@ -320,9 +320,23 @@ setInterval(fetchDashboard, 10000);
 ### Before submitting PR
 1. Run `cargo fmt` (format)
 2. Run `cargo clippy -- -D warnings` (lints)
-3. Run `cargo test` (when tests exist)
-4. Ensure binary size < 10 MB: `ls -lh target/release/nanomon`
-5. Test in Docker: `docker compose up --build`
+3. Run `cargo test` (unit tests)
+4. Run `make coverage` (line coverage of business logic must stay ≥ `COV_MIN`, default 35%)
+5. Ensure binary size < 10 MB: `ls -lh target/release/nanomon`
+6. Test in Docker: `docker compose up --build`
+
+`make check` runs steps 1-4 together. CI enforces fmt + clippy + tests + the
+coverage threshold (`.github/workflows/ci.yml`).
+
+### Quality tooling
+- **Coverage** (`cargo-llvm-cov`): `make coverage` (summary + threshold) or
+  `make coverage-html` (browsable report). The gate ignores `main.rs`, the HTTP
+  `interface/` and port trait defs (`ports/`) — integration-test territory.
+  Ratchet `COV_MIN` in the `Makefile` up as tests are added.
+- **Mutation testing** (`cargo-mutants`): `make mutants`. Scope is business
+  logic only (`.cargo/mutants.toml` excludes I/O adapters, interface, main).
+  Runs weekly + on demand in CI (`.github/workflows/mutants.yml`), non-blocking.
+  Surviving mutants flag weak assertions to strengthen.
 
 ### Code review checklist
 - [ ] No `unwrap()` or `expect()` in production code (use `?` or handle gracefully)

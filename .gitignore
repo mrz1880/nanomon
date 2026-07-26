@@ -3,6 +3,11 @@
 **/*.rs.bk
 *.pdb
 
+# Coverage / mutation testing artifacts
+/mutants.out*/
+/lcov.info
+/*.profraw
+
 # IDE
 .idea/
 .vscode/

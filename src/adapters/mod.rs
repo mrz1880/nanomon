@@ -1,9 +1,11 @@
+pub mod dirusage;
 pub mod docker;
 pub mod procfs;
 pub mod store;
 pub mod systemd;
 pub mod webhook;
 
+pub use dirusage::FsDirectoryUsage;
 pub use docker::DockerAdapter;
 pub use procfs::{ProcfsAdapter, ProcfsConfig};
 pub use store::MemoryStore;

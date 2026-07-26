@@ -697,3 +697,42 @@ a.stack-container-header {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.35; }
 }
+
+/* Watched directories (per-directory usage) */
+.watched-dirs {
+    margin-top: 28px;
+}
+
+.watched-dir-title {
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    color: #8b949e;
+    margin: 18px 0 8px;
+    font-family: monospace;
+}
+
+.dir-table td {
+    vertical-align: middle;
+}
+
+.dir-bar-cell {
+    width: 60%;
+}
+
+.dir-bar {
+    background: #21262d;
+    border-radius: 4px;
+    height: 10px;
+    overflow: hidden;
+}
+
+.dir-bar-fill {
+    background: linear-gradient(90deg, #3fb950, #58a6ff);
+    height: 100%;
+}
+
+.dir-bytes {
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}

@@ -167,6 +167,7 @@ Interface (HTTP API + Web UI)
 | `NANOMON_PROCESS_LIMIT` | `20` | API handlers | Max processes returned |
 | `DOCKER_HOST` | `unix:///var/run/docker.sock` | DockerAdapter | Docker socket path |
 | `NANOMON_SERVICE_FILTER` | *(all)* | SystemctlAdapter | Comma-separated glob allow-list of units (e.g. `nginx,worker-*`) |
+| `NANOMON_WATCH_DIRS` | *(none)* | FsDirectoryUsage | Comma-separated dirs to report per-directory usage (cached at poll interval) |
 | `NANOMON_PROC_PATH` | `/proc` | ProcfsAdapter | Path to procfs (use `/host/proc` in Docker) |
 | `NANOMON_SYS_PATH` | `/sys` | ProcfsAdapter | Path to sysfs (use `/host/sys` in Docker) |
 | `NANOMON_LOG_LEVEL` | `info` | tracing | Log verbosity (trace/debug/info/warn/error) |

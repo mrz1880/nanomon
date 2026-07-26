@@ -1,5 +1,6 @@
 pub mod alert;
 pub mod container;
+pub mod directory;
 pub mod disk;
 pub mod host;
 pub mod metrics;
@@ -11,6 +12,7 @@ pub mod temperature;
 
 pub use alert::{AlertEvent, AlertMetric, AlertRule, ServiceAlertEvent, ServiceAlertRule};
 pub use container::{Container, ContainerId, ContainerState, Stack};
+pub use directory::{DirectoryEntry, DirectoryUsage};
 pub use disk::Disk;
 pub use host::Host;
 pub use metrics::{CpuMetrics, IoMetrics, LoadAverage, MemoryMetrics, NetworkMetrics};

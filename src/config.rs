@@ -26,6 +26,7 @@ pub struct Config {
     pub log_level: String,
     pub enable_systemd: bool,
     pub service_filter: Vec<String>,
+    pub watch_dirs: Vec<PathBuf>,
     pub alert_config_path: Option<PathBuf>,
 }
 
@@ -79,6 +80,15 @@ impl Config {
                     s.split(',')
                         .map(|p| p.trim().to_string())
                         .filter(|p| !p.is_empty())
+                        .collect()
+                })
+                .unwrap_or_default(),
+            watch_dirs: env::var("NANOMON_WATCH_DIRS")
+                .map(|s| {
+                    s.split(',')
+                        .map(|p| p.trim())
+                        .filter(|p| !p.is_empty())
+                        .map(PathBuf::from)
                         .collect()
                 })
                 .unwrap_or_default(),

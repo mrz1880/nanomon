@@ -16,10 +16,10 @@ use serde::{Deserialize, Serialize};
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt as _;
 
-use crate::application::{Collector, MonitoringService};
+use crate::application::{Collector, DirectoryUsageService, MonitoringService};
 use crate::domain::{
-    Container, CpuMetrics, Host, LoadAverage, MemoryMetrics, Process, Stack, SystemdService,
-    Temperature,
+    Container, CpuMetrics, DirectoryUsage, Host, LoadAverage, MemoryMetrics, Process, Stack,
+    SystemdService, Temperature,
 };
 
 /// Custom error type that implements IntoResponse
@@ -44,6 +44,7 @@ impl From<Box<dyn std::error::Error + Send + Sync>> for AppError {
 pub struct AppState {
     pub monitoring_service: Arc<MonitoringService>,
     pub live: Arc<Collector>,
+    pub dir_usage: Arc<DirectoryUsageService>,
     pub sse_keepalive: u64,
 }
 
@@ -378,6 +379,28 @@ pub async fn disks_handler(State(state): State<AppState>) -> Response {
     }
 }
 
+/// Response for /api/disks/dirs
+#[derive(Debug, Serialize)]
+pub struct DirectoriesResponse {
+    pub timestamp: String,
+    pub enabled: bool,
+    pub directories: Vec<DirectoryUsage>,
+}
+
+/// Handler for GET /api/disks/dirs (cached per-directory usage)
+#[debug_handler]
+pub async fn directories_handler(State(state): State<AppState>) -> Response {
+    (
+        StatusCode::OK,
+        Json(DirectoriesResponse {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            enabled: state.dir_usage.enabled(),
+            directories: state.dir_usage.snapshot(),
+        }),
+    )
+        .into_response()
+}
+
 /// Handler for GET /api/network
 #[debug_handler]
 pub async fn network_handler(State(state): State<AppState>) -> Response {
@@ -700,6 +723,23 @@ pub async fn prometheus_handler(State(state): State<AppState>) -> Response {
             1.0,
             &labels,
         );
+    }
+
+    // Watched directory usage (cached)
+    for dir in state.dir_usage.snapshot() {
+        let base = dir.path.trim_end_matches('/');
+        for entry in &dir.entries {
+            let full = format!("{}/{}", base, entry.name);
+            let labels = [("path", full.as_str())];
+            write_metric(
+                &mut output,
+                "nanomon_dir_bytes",
+                "gauge",
+                "Directory size in bytes",
+                entry.bytes as f64,
+                &labels,
+            );
+        }
     }
 
     (

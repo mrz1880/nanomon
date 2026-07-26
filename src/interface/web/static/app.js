@@ -621,6 +621,8 @@ async function loadProcesses() {
 // ---- Disks ----
 
 async function loadDisks() {
+    loadWatchedDirs();
+
     const response = await fetch('/api/disks');
     const data = await response.json();
     const tbody = document.getElementById('disks-list');
@@ -640,6 +642,47 @@ async function loadDisks() {
                 <td>${formatBytes(d.available_bytes)}</td>
                 <td><span class="${getUsageClass(usagePercent)}">${usagePercent}%</span></td>
             </tr>
+        `;
+    }).join('');
+}
+
+// Per-directory usage (NANOMON_WATCH_DIRS). Hidden unless enabled with data.
+async function loadWatchedDirs() {
+    const section = document.getElementById('watched-dirs');
+    const content = document.getElementById('watched-dirs-content');
+    if (!section || !content) return;
+
+    let data;
+    try {
+        const response = await fetch('/api/disks/dirs');
+        data = await response.json();
+    } catch (_) {
+        section.style.display = 'none';
+        return;
+    }
+
+    if (!data.enabled || !data.directories || data.directories.length === 0) {
+        section.style.display = 'none';
+        return;
+    }
+
+    section.style.display = 'block';
+    content.innerHTML = data.directories.map(dir => {
+        const max = dir.entries.reduce((m, e) => Math.max(m, e.bytes), 0) || 1;
+        const rows = dir.entries.map(e => `
+            <tr>
+                <td>${e.name}</td>
+                <td class="dir-bar-cell">
+                    <div class="dir-bar"><div class="dir-bar-fill" style="width: ${(e.bytes / max * 100).toFixed(1)}%"></div></div>
+                </td>
+                <td class="dir-bytes">${formatBytes(e.bytes)}</td>
+            </tr>
+        `).join('');
+        return `
+            <h3 class="watched-dir-title">${dir.path}</h3>
+            <table class="disks-table dir-table">
+                <tbody>${rows || '<tr><td class="loading">empty</td></tr>'}</tbody>
+            </table>
         `;
     }).join('');
 }

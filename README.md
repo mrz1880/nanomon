@@ -118,6 +118,7 @@ Customize NanoMon via environment variables:
 | `DOCKER_HOST` | `unix:///var/run/docker.sock` | Docker socket path |
 | `NANOMON_PROC_PATH` | `/proc` | Path to procfs (use `/host/proc` in Docker) |
 | `NANOMON_SYS_PATH` | `/sys` | Path to sysfs (use `/host/sys` in Docker) |
+| `NANOMON_WATCH_DIRS` | *(none)* | Comma-separated dirs (e.g. `/srv,/data`); reports each dir's direct children sizes, refreshed on the poll interval |
 | `NANOMON_LOG_LEVEL` | `info` | Logging verbosity (`trace`/`debug`/`info`/`warn`/`error`) |
 | `NANOMON_ENABLE_SYSTEMD` | `false` | Enable systemd service monitoring (`/api/services`, service metrics/alerts) |
 | `NANOMON_SERVICE_FILTER` | *(all)* | Comma-separated glob allow-list of units (e.g. `nginx,worker-*`); restricts `/api/services`, the UI, `/metrics`, and alerts |
@@ -138,6 +139,7 @@ NanoMon exposes a REST API for programmatic access:
 | `GET /api/containers` | All containers with stats, grouped by Compose stacks |
 | `GET /api/processes?sort={cpu\|memory}&limit=N` | Top N processes sorted by CPU or memory |
 | `GET /api/disks` | Disk usage for all mount points |
+| `GET /api/disks/dirs` | Per-directory usage for `NANOMON_WATCH_DIRS` (cached) |
 | `GET /api/network` | Network interface statistics (RX/TX bytes, errors) |
 | `GET /api/services` | Systemd unit states (requires `NANOMON_ENABLE_SYSTEMD=true`) |
 | `GET /api/dashboard` | **Aggregated view** (all metrics in one call) |

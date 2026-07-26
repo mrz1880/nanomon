@@ -11,9 +11,10 @@ use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use adapters::{
-    DockerAdapter, MemoryStore, ProcfsAdapter, ProcfsConfig, SystemctlAdapter, WebhookSink,
+    DockerAdapter, FsDirectoryUsage, MemoryStore, ProcfsAdapter, ProcfsConfig, SystemctlAdapter,
+    WebhookSink,
 };
-use application::{AlertEvaluator, Collector, MonitoringService};
+use application::{AlertEvaluator, Collector, DirectoryUsageService, MonitoringService};
 use config::Config;
 use domain::{AlertRule, ServiceAlertRule};
 use interface::http::create_router;
@@ -100,8 +101,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         config.fast_interval, config.poll_interval
     );
 
+    // Optional per-directory disk usage, refreshed on the slow interval so the
+    // filesystem walk never runs on an HTTP request.
+    let dir_usage = if config.watch_dirs.is_empty() {
+        Arc::new(DirectoryUsageService::new(None))
+    } else {
+        let source = Arc::new(FsDirectoryUsage::new(config.watch_dirs.clone()));
+        let service = Arc::new(DirectoryUsageService::new(Some(source)));
+        info!(
+            "Watching {} director(ies) for usage",
+            config.watch_dirs.len()
+        );
+
+        let refresh = service.clone();
+        let interval = config.poll_interval;
+        tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(std::time::Duration::from_secs(interval));
+            loop {
+                ticker.tick().await;
+                refresh.refresh().await;
+            }
+        });
+        service
+    };
+
     // Create HTTP server
-    let app = create_router(monitoring_service, collector, config.sse_keepalive);
+    let app = create_router(
+        monitoring_service,
+        collector,
+        dir_usage,
+        config.sse_keepalive,
+    );
     let addr = match config.socket_addr() {
         Ok(addr) => addr,
         Err(e) => {

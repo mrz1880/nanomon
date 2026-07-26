@@ -129,6 +129,9 @@ impl SystemSource for ProcfsSystemSource {
         Ok(LoadAverage::new(one, five, fifteen))
     }
 
+    // statvfs field types (fsblkcnt_t) vary by platform: the `as u64` casts are
+    // redundant on Linux but required on macOS, so silence the Linux-only lint.
+    #[allow(clippy::unnecessary_cast)]
     async fn list_disks(&self) -> Result<Vec<Disk>, Box<dyn std::error::Error + Send + Sync>> {
         let mounts_path = self.config.proc_path.join("mounts");
         let mounts_content = fs::read_to_string(&mounts_path)?;

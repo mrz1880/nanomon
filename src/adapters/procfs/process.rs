@@ -171,7 +171,7 @@ impl ProcessSource for ProcfsProcessSource {
         n: usize,
     ) -> Result<Vec<Process>, Box<dyn std::error::Error + Send + Sync>> {
         let mut processes = self.list_processes().await?;
-        processes.sort_by(|a, b| b.memory_bytes.cmp(&a.memory_bytes));
+        processes.sort_by_key(|p| std::cmp::Reverse(p.memory_bytes));
         processes.truncate(n);
         Ok(processes)
     }

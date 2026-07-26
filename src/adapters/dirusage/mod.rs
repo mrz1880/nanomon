@@ -83,7 +83,7 @@ fn usage_for(dir: &Path, max_depth: usize, max_entries: usize) -> Option<Directo
         entries.push(DirectoryEntry { name, bytes });
     }
 
-    entries.sort_by(|a, b| b.bytes.cmp(&a.bytes));
+    entries.sort_by_key(|e| std::cmp::Reverse(e.bytes));
     Some(DirectoryUsage {
         path: dir.to_string_lossy().to_string(),
         entries,

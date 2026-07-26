@@ -148,7 +148,44 @@ async function loadHost() {
     document.getElementById('net-tx').textContent = formatBytes(nets.tx) + '/s';
 
     renderTemperatures(data.temperatures || []);
+    loadExternal();
     scheduleSparkRedraw();
+}
+
+// External (custom) metrics — hidden unless NANOMON_SCRAPE_URLS is configured.
+async function loadExternal() {
+    const section = document.getElementById('external-section');
+    const grid = document.getElementById('external-grid');
+    if (!section || !grid) return;
+
+    let data;
+    try {
+        data = await (await fetch('/api/external')).json();
+    } catch (_) {
+        section.style.display = 'none';
+        return;
+    }
+
+    const metrics = data.metrics || [];
+    if (metrics.length === 0) {
+        section.style.display = 'none';
+        return;
+    }
+
+    section.style.display = 'block';
+    grid.innerHTML = metrics.map(m => `
+        <div class="temp-card">
+            <div class="temp-label">${m.name}</div>
+            <div class="temp-value">${formatMetricValue(m.value)}</div>
+            <div class="temp-thresholds">${m.job}</div>
+        </div>
+    `).join('');
+}
+
+function formatMetricValue(n) {
+    if (typeof n !== 'number' || !isFinite(n)) return String(n);
+    if (n !== 0 && (Math.abs(n) >= 100000 || Math.abs(n) < 0.001)) return n.toExponential(2);
+    return (Math.round(n * 1000) / 1000).toString();
 }
 
 function renderTemperatures(temperatures) {

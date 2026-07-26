@@ -27,6 +27,8 @@ pub struct Config {
     pub enable_systemd: bool,
     pub service_filter: Vec<String>,
     pub watch_dirs: Vec<PathBuf>,
+    /// External scrape targets as (job, url) pairs.
+    pub scrape_targets: Vec<(String, String)>,
     pub alert_config_path: Option<PathBuf>,
 }
 
@@ -92,6 +94,9 @@ impl Config {
                         .collect()
                 })
                 .unwrap_or_default(),
+            scrape_targets: env::var("NANOMON_SCRAPE_URLS")
+                .map(|s| parse_scrape_targets(&s))
+                .unwrap_or_default(),
             alert_config_path: env::var("NANOMON_ALERT_CONFIG").ok().map(PathBuf::from),
         }
     }
@@ -108,9 +113,21 @@ impl Default for Config {
     }
 }
 
+/// Parse `NANOMON_SCRAPE_URLS` (comma-separated `job=url`, or bare `url`).
+fn parse_scrape_targets(raw: &str) -> Vec<(String, String)> {
+    raw.split(',')
+        .map(|item| item.trim())
+        .filter(|item| !item.is_empty())
+        .map(|item| match item.split_once('=') {
+            Some((job, url)) => (job.trim().to_string(), url.trim().to_string()),
+            None => (item.to_string(), item.to_string()),
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::build_socket_addr;
+    use super::{build_socket_addr, parse_scrape_targets};
 
     #[test]
     fn default_bind_is_all_interfaces() {
@@ -134,5 +151,25 @@ mod tests {
     #[test]
     fn invalid_bind_is_rejected() {
         assert!(build_socket_addr("not-an-ip", 3000).is_err());
+    }
+
+    #[test]
+    fn parses_named_and_bare_targets() {
+        let targets = parse_scrape_targets(
+            "app=http://localhost:9100/metrics, http://x/y , ,badger=http://b",
+        );
+        assert_eq!(targets.len(), 3);
+        assert_eq!(
+            targets[0],
+            (
+                "app".to_string(),
+                "http://localhost:9100/metrics".to_string()
+            )
+        );
+        assert_eq!(
+            targets[1],
+            ("http://x/y".to_string(), "http://x/y".to_string())
+        );
+        assert_eq!(targets[2], ("badger".to_string(), "http://b".to_string()));
     }
 }

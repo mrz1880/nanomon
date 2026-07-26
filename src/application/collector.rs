@@ -8,7 +8,7 @@ use tokio::time::interval;
 use tracing::error;
 
 use crate::domain::Host;
-use crate::ports::MetricStore;
+use crate::ports::{ExternalMetricSource, MetricStore};
 
 use super::{AlertEvaluator, MonitoringService};
 
@@ -46,6 +46,7 @@ pub struct Collector {
     hires_store: Arc<dyn MetricStore>,
     tx: broadcast::Sender<Arc<Host>>,
     alert: Option<Arc<AlertEvaluator>>,
+    external: Option<Arc<dyn ExternalMetricSource>>,
     net_prev: Mutex<Option<NetSample>>,
     fast_interval: u64,
     slow_interval: u64,
@@ -56,6 +57,7 @@ impl Collector {
         service: Arc<MonitoringService>,
         hires_store: Arc<dyn MetricStore>,
         alert: Option<Arc<AlertEvaluator>>,
+        external: Option<Arc<dyn ExternalMetricSource>>,
         fast_interval: u64,
         slow_interval: u64,
     ) -> Arc<Self> {
@@ -65,6 +67,7 @@ impl Collector {
             hires_store,
             tx,
             alert,
+            external,
             net_prev: Mutex::new(None),
             fast_interval,
             slow_interval,
@@ -140,12 +143,19 @@ impl Collector {
             },
         };
 
+        // Scrape external metric endpoints (Prometheus text / JSON), if any.
+        let external = match &self.external {
+            Some(source) => source.scrape().await,
+            None => Vec::new(),
+        };
+
         let merged = base
             .with_disks(resources.disks)
             .with_temperatures(resources.temperatures)
             .with_containers(resources.containers)
             .with_processes(resources.processes)
             .with_services(resources.services)
+            .with_external(external)
             .with_timestamp(Utc::now());
 
         if let Some(alert) = &self.alert {

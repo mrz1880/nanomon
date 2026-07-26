@@ -11,8 +11,8 @@ use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use adapters::{
-    DockerAdapter, FsDirectoryUsage, MemoryStore, ProcfsAdapter, ProcfsConfig, SystemctlAdapter,
-    WebhookSink,
+    DockerAdapter, FsDirectoryUsage, HttpScrapeSource, MemoryStore, ProcfsAdapter, ProcfsConfig,
+    ScrapeTarget, SystemctlAdapter, WebhookSink,
 };
 use application::{AlertEvaluator, Collector, DirectoryUsageService, MonitoringService};
 use config::Config;
@@ -109,11 +109,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // High-resolution store for the live (fast-tier) charts.
     let hires_store = Arc::new(MemoryStore::new(config.hires_size));
 
+    // Optional external metric scraping (Prometheus text / JSON endpoints).
+    let external_source: Option<Arc<dyn ports::ExternalMetricSource>> =
+        if config.scrape_targets.is_empty() {
+            None
+        } else {
+            let targets: Vec<ScrapeTarget> = config
+                .scrape_targets
+                .iter()
+                .map(|(job, url)| ScrapeTarget {
+                    job: job.clone(),
+                    url: url.clone(),
+                })
+                .collect();
+            info!("Scraping {} external target(s)", targets.len());
+            Some(Arc::new(HttpScrapeSource::new(targets)))
+        };
+
     // Two-speed background collector: fast host loop + slow resource loop.
     let collector = Collector::new(
         monitoring_service.clone(),
         hires_store,
         alert_evaluator,
+        external_source,
         config.fast_interval,
         config.poll_interval,
     );

@@ -7,9 +7,9 @@ use crate::application::{Collector, DirectoryUsageService, MonitoringService};
 
 use super::handlers::{
     container_detail_handler, containers_handler, dashboard_handler, directories_handler,
-    disks_handler, health_handler, history_handler, host_handler, live_history_handler,
-    network_handler, processes_handler, prometheus_handler, services_handler, stream_handler,
-    AppState,
+    disks_handler, external_handler, health_handler, history_handler, host_handler,
+    live_history_handler, network_handler, processes_handler, prometheus_handler, services_handler,
+    stream_handler, AppState,
 };
 
 pub fn create_router(
@@ -40,6 +40,7 @@ pub fn create_router(
         .route("/api/live/history", get(live_history_handler))
         .route("/api/stream", get(stream_handler))
         .route("/api/services", get(services_handler))
+        .route("/api/external", get(external_handler))
         // Prometheus metrics
         .route("/metrics", get(prometheus_handler))
         // Serve static files

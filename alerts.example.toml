@@ -41,6 +41,15 @@ threshold = 85.0
 webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
 cooldown_seconds = 60
 
+# Alert on a metric ingested from NANOMON_SCRAPE_URLS (matched by its name).
+[[rules]]
+name = "Queue backlog"
+metric = { external = { name = "app_queue_depth" } }
+condition = "above"
+threshold = 1000.0
+webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+cooldown_seconds = 300
+
 # Systemd service rules (require NANOMON_ENABLE_SYSTEMD=true).
 # Fire when a unit *enters* one of the `alert_when` states (on transition, not
 # on every cycle) and stay quiet while it remains down. A recovery followed by a

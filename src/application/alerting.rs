@@ -175,6 +175,11 @@ impl AlertEvaluator {
                 .iter()
                 .find(|t| t.label == *label)
                 .map(|t| t.current_celsius),
+            AlertMetric::External { name } => snapshot
+                .external
+                .iter()
+                .find(|m| m.name == *name)
+                .map(|m| m.value),
         }
     }
 

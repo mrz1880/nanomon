@@ -27,6 +27,7 @@ pub enum AlertMetric {
     DiskUsage { mount_point: String },
     LoadAverage1m,
     Temperature { label: String },
+    External { name: String },
 }
 
 /// Comparison condition

@@ -18,8 +18,8 @@ use tokio_stream::StreamExt as _;
 
 use crate::application::{Collector, DirectoryUsageService, MonitoringService};
 use crate::domain::{
-    Container, CpuMetrics, DirectoryUsage, Host, LoadAverage, MemoryMetrics, Process, Stack,
-    SystemdService, Temperature,
+    Container, CpuMetrics, DirectoryUsage, ExternalMetric, Host, LoadAverage, MemoryMetrics,
+    Process, Stack, SystemdService, Temperature,
 };
 
 /// Custom error type that implements IntoResponse
@@ -492,6 +492,32 @@ pub async fn history_handler(
     (StatusCode::OK, Json(response)).into_response()
 }
 
+/// Response for /api/external
+#[derive(Debug, Serialize)]
+pub struct ExternalResponse {
+    pub timestamp: String,
+    pub metrics: Vec<ExternalMetric>,
+}
+
+/// Handler for GET /api/external (ingested external metrics from the last snapshot)
+#[debug_handler]
+pub async fn external_handler(State(state): State<AppState>) -> Response {
+    let metrics = state
+        .monitoring_service
+        .get_latest_snapshot()
+        .map(|h| h.external.clone())
+        .unwrap_or_default();
+
+    (
+        StatusCode::OK,
+        Json(ExternalResponse {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            metrics,
+        }),
+    )
+        .into_response()
+}
+
 /// Handler for GET /api/services
 #[debug_handler]
 pub async fn services_handler(State(state): State<AppState>) -> Response {
@@ -740,6 +766,19 @@ pub async fn prometheus_handler(State(state): State<AppState>) -> Response {
                 &labels,
             );
         }
+    }
+
+    // External scraped metrics, re-exposed under a namespaced name
+    for metric in &host.external {
+        let labels = [("job", metric.job.as_str()), ("name", metric.name.as_str())];
+        write_metric(
+            &mut output,
+            "nanomon_external",
+            "gauge",
+            "Externally scraped metric",
+            metric.value,
+            &labels,
+        );
     }
 
     (

@@ -2,8 +2,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    Container, CpuMetrics, Disk, LoadAverage, MemoryMetrics, MonitoredResource, NetworkInterface,
-    Process, ResourceType, SystemdService, Temperature,
+    Container, CpuMetrics, Disk, ExternalMetric, LoadAverage, MemoryMetrics, MonitoredResource,
+    NetworkInterface, Process, ResourceType, SystemdService, Temperature,
 };
 
 /// Host aggregate root
@@ -21,6 +21,8 @@ pub struct Host {
     pub temperatures: Vec<Temperature>,
     #[serde(default)]
     pub services: Vec<SystemdService>,
+    #[serde(default)]
+    pub external: Vec<ExternalMetric>,
     pub timestamp: DateTime<Utc>,
 }
 
@@ -38,6 +40,7 @@ impl Host {
             processes: Vec::new(),
             temperatures: Vec::new(),
             services: Vec::new(),
+            external: Vec::new(),
             timestamp: Utc::now(),
         }
     }
@@ -83,6 +86,11 @@ impl Host {
 
     pub fn with_services(mut self, services: Vec<SystemdService>) -> Self {
         self.services = services;
+        self
+    }
+
+    pub fn with_external(mut self, external: Vec<ExternalMetric>) -> Self {
+        self.external = external;
         self
     }
 

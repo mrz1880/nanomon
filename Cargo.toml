@@ -2,9 +2,14 @@
 name = "nanomon"
 version = "0.3.0"
 edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
-description = "Lightweight Docker container monitoring tool for NAS devices"
+rust-version = "1.83"
+authors = ["Anthony D. <mrz1880@gmail.com>"]
+description = "Lightweight self-hosted server & NAS monitoring: host, Docker, processes, temperatures, alerting and Prometheus — under 15 MB RAM"
 license = "MIT"
+repository = "https://github.com/mrz1880/nanomon"
+readme = "README.md"
+keywords = ["monitoring", "server", "nas", "docker", "prometheus"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 # Async runtime

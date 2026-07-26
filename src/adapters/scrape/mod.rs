@@ -135,6 +135,16 @@ mod tests {
     }
 
     #[test]
+    fn comment_lines_are_never_metrics() {
+        // A comment whose last token is a number must still be skipped, not
+        // parsed as a metric (guards the empty-or-comment skip condition).
+        let metrics = parse_prometheus("j", "# threshold is 100\nreal 5", 100);
+        assert_eq!(metrics.len(), 1);
+        assert_eq!(metrics[0].name, "real");
+        assert_eq!(metrics[0].value, 5.0);
+    }
+
+    #[test]
     fn parses_flat_json() {
         let body = r#"{"temp": 55, "load": 0.7, "name": "ignored"}"#;
         let metrics = parse_json_flat("j", body, 100);

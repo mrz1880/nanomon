@@ -21,8 +21,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-mutants
-      - name: Run mutation testing
-        run: cargo mutants --no-shuffle -j 2
+      - name: Run mutation testing (gated on score)
+        env:
+          MUTATION_MIN_SCORE: "25"
+        run: bash scripts/mutation-score.sh --no-shuffle -j 2
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4

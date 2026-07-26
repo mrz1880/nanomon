@@ -335,8 +335,11 @@ coverage threshold (`.github/workflows/ci.yml`).
   Ratchet `COV_MIN` in the `Makefile` up as tests are added.
 - **Mutation testing** (`cargo-mutants`): `make mutants`. Scope is business
   logic only (`.cargo/mutants.toml` excludes I/O adapters, interface, main).
-  Runs weekly + on demand in CI (`.github/workflows/mutants.yml`), non-blocking.
-  Surviving mutants flag weak assertions to strengthen.
+  `scripts/mutation-score.sh` computes the mutation score (killed / viable) and
+  fails below `MUTATION_MIN` (default 25%; ratchet up as tests improve). Runs
+  weekly + on demand in CI (`.github/workflows/mutants.yml`). Surviving mutants
+  flag weak assertions to strengthen — a fast win is unit-testing the domain
+  value objects (`process`, `host`, `disk`, `temperature`…), still mostly at 0%.
 
 ### Code review checklist
 - [ ] No `unwrap()` or `expect()` in production code (use `?` or handle gracefully)

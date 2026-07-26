@@ -119,6 +119,8 @@ Customize NanoMon via environment variables:
 | `NANOMON_PROC_PATH` | `/proc` | Path to procfs (use `/host/proc` in Docker) |
 | `NANOMON_SYS_PATH` | `/sys` | Path to sysfs (use `/host/sys` in Docker) |
 | `NANOMON_LOG_LEVEL` | `info` | Logging verbosity (`trace`/`debug`/`info`/`warn`/`error`) |
+| `NANOMON_ENABLE_SYSTEMD` | `false` | Enable systemd service monitoring (`/api/services`, service metrics/alerts) |
+| `NANOMON_SERVICE_FILTER` | *(all)* | Comma-separated glob allow-list of units (e.g. `nginx,worker-*`); restricts `/api/services`, the UI, `/metrics`, and alerts |
 
 **Example** (custom port):
 ```bash
@@ -137,7 +139,9 @@ NanoMon exposes a REST API for programmatic access:
 | `GET /api/processes?sort={cpu\|memory}&limit=N` | Top N processes sorted by CPU or memory |
 | `GET /api/disks` | Disk usage for all mount points |
 | `GET /api/network` | Network interface statistics (RX/TX bytes, errors) |
+| `GET /api/services` | Systemd unit states (requires `NANOMON_ENABLE_SYSTEMD=true`) |
 | `GET /api/dashboard` | **Aggregated view** (all metrics in one call) |
+| `GET /metrics` | Prometheus exposition (host, disks, network, containers, temps, `nanomon_service_state`) |
 
 ### Example: Host Metrics
 

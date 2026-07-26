@@ -25,6 +25,7 @@ pub struct Config {
     pub sys_path: PathBuf,
     pub log_level: String,
     pub enable_systemd: bool,
+    pub service_filter: Vec<String>,
     pub alert_config_path: Option<PathBuf>,
 }
 
@@ -73,6 +74,14 @@ impl Config {
             enable_systemd: env::var("NANOMON_ENABLE_SYSTEMD")
                 .map(|s| s == "true" || s == "1")
                 .unwrap_or(false),
+            service_filter: env::var("NANOMON_SERVICE_FILTER")
+                .map(|s| {
+                    s.split(',')
+                        .map(|p| p.trim().to_string())
+                        .filter(|p| !p.is_empty())
+                        .collect()
+                })
+                .unwrap_or_default(),
             alert_config_path: env::var("NANOMON_ALERT_CONFIG").ok().map(PathBuf::from),
         }
     }

@@ -66,7 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Optionally enable systemd monitoring
     if config.enable_systemd {
-        let systemd_adapter = Arc::new(SystemctlAdapter::new());
+        let systemd_adapter = Arc::new(SystemctlAdapter::new(config.service_filter.clone()));
         monitoring_service = monitoring_service.with_service_source(systemd_adapter);
     }
 

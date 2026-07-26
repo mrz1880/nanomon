@@ -676,6 +676,32 @@ pub async fn prometheus_handler(State(state): State<AppState>) -> Response {
         );
     }
 
+    // Systemd services (value is 1 for the unit's current state)
+    let services = state
+        .monitoring_service
+        .get_services()
+        .await
+        .unwrap_or_default();
+    for service in &services {
+        let state_str = match service.state {
+            crate::domain::ServiceState::Active => "active",
+            crate::domain::ServiceState::Inactive => "inactive",
+            crate::domain::ServiceState::Failed => "failed",
+            crate::domain::ServiceState::Activating => "activating",
+            crate::domain::ServiceState::Deactivating => "deactivating",
+            crate::domain::ServiceState::Unknown => "unknown",
+        };
+        let labels = [("unit", service.name.as_str()), ("state", state_str)];
+        write_metric(
+            &mut output,
+            "nanomon_service_state",
+            "gauge",
+            "Systemd unit state (1 for the unit's current state)",
+            1.0,
+            &labels,
+        );
+    }
+
     (
         StatusCode::OK,
         [(

@@ -8,10 +8,12 @@ use crate::ports::ServiceSource;
 /// No D-Bus dependency — keeps binary small.
 pub struct SystemctlAdapter {
     available: bool,
+    /// Optional glob allow-list; empty means "all units".
+    filter: Vec<String>,
 }
 
 impl SystemctlAdapter {
-    pub fn new() -> Self {
+    pub fn new(filter: Vec<String>) -> Self {
         let available = std::process::Command::new("systemctl")
             .arg("--version")
             .output()
@@ -24,8 +26,45 @@ impl SystemctlAdapter {
             tracing::debug!("Systemd not available, service monitoring disabled");
         }
 
-        Self { available }
+        Self { available, filter }
     }
+}
+
+/// Match a unit name against a single glob pattern supporting `*` wildcards.
+fn glob_match(pattern: &str, text: &str) -> bool {
+    let parts: Vec<&str> = pattern.split('*').collect();
+    if parts.len() == 1 {
+        return pattern == text; // no wildcard -> exact match
+    }
+
+    let mut pos = 0;
+    let last = parts.len() - 1;
+    for (i, part) in parts.iter().enumerate() {
+        if part.is_empty() {
+            continue;
+        }
+        if i == 0 {
+            if !text[pos..].starts_with(part) {
+                return false;
+            }
+            pos += part.len();
+        } else if i == last {
+            if !text[pos..].ends_with(part) {
+                return false;
+            }
+        } else {
+            match text[pos..].find(part) {
+                Some(idx) => pos += idx + part.len(),
+                None => return false,
+            }
+        }
+    }
+    true
+}
+
+/// Whether a unit passes the filter. An empty filter allows everything.
+fn unit_matches(name: &str, patterns: &[String]) -> bool {
+    patterns.is_empty() || patterns.iter().any(|p| glob_match(p, name))
 }
 
 #[derive(Debug, Deserialize)]
@@ -82,6 +121,7 @@ impl ServiceSource for SystemctlAdapter {
                     u.sub.unwrap_or_default(),
                 ))
             })
+            .filter(|s| unit_matches(&s.name, &self.filter))
             .collect();
 
         Ok(services)
@@ -89,5 +129,38 @@ impl ServiceSource for SystemctlAdapter {
 
     fn is_available(&self) -> bool {
         self.available
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{glob_match, unit_matches};
+
+    #[test]
+    fn exact_and_wildcard_matches() {
+        assert!(glob_match("nginx", "nginx"));
+        assert!(!glob_match("nginx", "nginxx"));
+
+        assert!(glob_match("worker-*", "worker-1"));
+        assert!(glob_match("worker-*", "worker-abc"));
+        assert!(glob_match("worker-*", "worker-")); // star matches empty
+        assert!(!glob_match("worker-*", "worker")); // missing the dash
+
+        assert!(glob_match("*-service", "docker-service"));
+        assert!(glob_match("ng*x", "nginx"));
+        assert!(!glob_match("ng*x", "apache"));
+    }
+
+    #[test]
+    fn empty_filter_allows_all() {
+        assert!(unit_matches("anything", &[]));
+    }
+
+    #[test]
+    fn filter_restricts_to_matching_units() {
+        let patterns = vec!["nginx".to_string(), "worker-*".to_string()];
+        assert!(unit_matches("nginx", &patterns));
+        assert!(unit_matches("worker-7", &patterns));
+        assert!(!unit_matches("sshd", &patterns));
     }
 }

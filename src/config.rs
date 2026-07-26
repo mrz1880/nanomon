@@ -1,10 +1,17 @@
 use std::env;
+use std::net::{AddrParseError, SocketAddr};
 use std::path::PathBuf;
+
+/// Build a listen address from a bind string and port, validating the IP.
+fn build_socket_addr(bind: &str, port: u16) -> Result<SocketAddr, AddrParseError> {
+    Ok(SocketAddr::new(bind.parse()?, port))
+}
 
 /// Application configuration
 #[derive(Debug, Clone)]
 pub struct Config {
     pub port: u16,
+    pub bind: String,
     pub poll_interval: u64,
     pub fast_interval: u64,
     pub hires_size: usize,
@@ -28,6 +35,7 @@ impl Config {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(3000),
+            bind: env::var("NANOMON_BIND").unwrap_or_else(|_| "0.0.0.0".to_string()),
             poll_interval: env::var("NANOMON_POLL_INTERVAL")
                 .ok()
                 .and_then(|s| s.parse().ok())
@@ -68,10 +76,44 @@ impl Config {
             alert_config_path: env::var("NANOMON_ALERT_CONFIG").ok().map(PathBuf::from),
         }
     }
+
+    /// Resolve the HTTP listen address, validating `NANOMON_BIND` as an IP.
+    pub fn socket_addr(&self) -> Result<SocketAddr, AddrParseError> {
+        build_socket_addr(&self.bind, self.port)
+    }
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self::from_env()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_socket_addr;
+
+    #[test]
+    fn default_bind_is_all_interfaces() {
+        let addr = build_socket_addr("0.0.0.0", 3000).unwrap();
+        assert_eq!(addr.to_string(), "0.0.0.0:3000");
+    }
+
+    #[test]
+    fn loopback_bind_is_loopback_only() {
+        let addr = build_socket_addr("127.0.0.1", 3000).unwrap();
+        assert!(addr.ip().is_loopback());
+    }
+
+    #[test]
+    fn ipv6_bind_parses() {
+        let addr = build_socket_addr("::1", 8080).unwrap();
+        assert!(addr.ip().is_loopback());
+        assert_eq!(addr.port(), 8080);
+    }
+
+    #[test]
+    fn invalid_bind_is_rejected() {
+        assert!(build_socket_addr("not-an-ip", 3000).is_err());
     }
 }

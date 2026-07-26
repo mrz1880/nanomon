@@ -102,8 +102,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Create HTTP server
     let app = create_router(monitoring_service, collector, config.sse_keepalive);
-    let addr = format!("0.0.0.0:{}", config.port);
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    let addr = match config.socket_addr() {
+        Ok(addr) => addr,
+        Err(e) => {
+            tracing::error!("Invalid NANOMON_BIND '{}': {}", config.bind, e);
+            return Err(e.into());
+        }
+    };
+    let listener = tokio::net::TcpListener::bind(addr).await?;
 
     info!("NanoMon listening on {}", addr);
     info!("  Dashboard: http://localhost:{}", config.port);

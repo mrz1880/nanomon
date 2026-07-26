@@ -158,6 +158,7 @@ Interface (HTTP API + Web UI)
 | Variable | Default | Used by | Notes |
 |----------|---------|---------|-------|
 | `NANOMON_PORT` | `3000` | main | HTTP listen port |
+| `NANOMON_BIND` | `0.0.0.0` | main | Listen address (e.g. `127.0.0.1` for loopback-only) |
 | `NANOMON_POLL_INTERVAL` | `10` | Collector | Slow-tier interval (disks, containers, processes, history) |
 | `NANOMON_FAST_INTERVAL` | `1` | Collector | Fast-tier interval (live host metrics streamed via SSE) |
 | `NANOMON_HIRES_SIZE` | `120` | Collector | High-resolution ring buffer for live charts (~2 min @ 1s) |

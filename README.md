@@ -108,6 +108,7 @@ Customize NanoMon via environment variables:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NANOMON_PORT` | `3000` | HTTP server port |
+| `NANOMON_BIND` | `0.0.0.0` | Listen address (e.g. `127.0.0.1` for loopback-only behind a reverse proxy) |
 | `NANOMON_POLL_INTERVAL` | `10` | Slow-tier interval in seconds (disks, containers, processes, history) |
 | `NANOMON_FAST_INTERVAL` | `1` | Fast-tier interval in seconds (live host metrics streamed over SSE) |
 | `NANOMON_HIRES_SIZE` | `120` | High-resolution points kept for live charts (~2 min @ 1s) |

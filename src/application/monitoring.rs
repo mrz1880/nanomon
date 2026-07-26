@@ -2,8 +2,16 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
-use crate::domain::{Container, Host, Process, Stack, SystemdService};
+use crate::domain::{Container, Disk, Host, Process, Stack, SystemdService, Temperature};
 use crate::ports::{ContainerSource, MetricStore, ProcessSource, ServiceSource, SystemSource};
+
+/// Slow-tier resources collected less frequently than host metrics.
+pub struct SlowResources {
+    pub disks: Vec<Disk>,
+    pub temperatures: Vec<Temperature>,
+    pub containers: Vec<Container>,
+    pub processes: Vec<Process>,
+}
 
 /// Main application service for monitoring
 pub struct MonitoringService {
@@ -70,6 +78,53 @@ impl MonitoringService {
         Ok(host)
     }
 
+    /// Collect fast-tier host metrics only (cpu, memory, load, network).
+    ///
+    /// This is the sole reader of the CPU `/proc/stat` delta baseline, so the
+    /// fast loop must be the only caller in the hot path; read handlers serve
+    /// from the store instead of re-collecting.
+    pub async fn collect_host(&self) -> Result<Host, Box<dyn std::error::Error + Send + Sync>> {
+        let (host_info, cpu, memory, load_avg, interfaces) = tokio::try_join!(
+            self.system_source.get_host_info(),
+            self.system_source.get_cpu_metrics(),
+            self.system_source.get_memory_metrics(),
+            self.system_source.get_load_average(),
+            self.system_source.list_network_interfaces(),
+        )?;
+
+        let host = Host::new(host_info.hostname)
+            .with_metrics(host_info.uptime_seconds, load_avg, cpu, memory)
+            .with_network_interfaces(interfaces)
+            .with_timestamp(Utc::now());
+
+        Ok(host)
+    }
+
+    /// Collect slow-tier resources (disks, temperatures, containers, processes).
+    pub async fn collect_slow(
+        &self,
+    ) -> Result<SlowResources, Box<dyn std::error::Error + Send + Sync>> {
+        let (disks, containers, processes) = tokio::try_join!(
+            self.system_source.list_disks(),
+            self.container_source.list_containers(),
+            self.process_source.list_processes(),
+        )?;
+
+        // Temperatures are optional - don't fail the whole collection.
+        let temperatures = self
+            .system_source
+            .get_temperatures()
+            .await
+            .unwrap_or_default();
+
+        Ok(SlowResources {
+            disks,
+            temperatures,
+            containers,
+            processes,
+        })
+    }
+
     /// Store a snapshot in the metric store
     pub fn store_snapshot(&self, snapshot: Host) {
         self.metric_store.store(snapshot);
@@ -95,14 +150,23 @@ impl MonitoringService {
     /// Get containers grouped by stack
     pub async fn get_stacks(&self) -> Result<Vec<Stack>, Box<dyn std::error::Error + Send + Sync>> {
         let containers = self.get_containers().await?;
-        let mut stacks_map = std::collections::HashMap::new();
+        Ok(Self::group_stacks(&containers))
+    }
+
+    /// Group containers into stacks, sorted by CPU usage (top consumers first).
+    ///
+    /// Pure function so it can be reused against a stored snapshot without a
+    /// fresh Docker call.
+    pub fn group_stacks(containers: &[Container]) -> Vec<Stack> {
+        let mut stacks_map: std::collections::HashMap<String, Vec<Container>> =
+            std::collections::HashMap::new();
 
         for container in containers {
             if let Some(stack_name) = &container.stack {
                 stacks_map
                     .entry(stack_name.clone())
-                    .or_insert_with(Vec::new)
-                    .push(container);
+                    .or_default()
+                    .push(container.clone());
             }
         }
 
@@ -118,7 +182,7 @@ impl MonitoringService {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        Ok(stacks)
+        stacks
     }
 
     /// Get top N processes sorted by CPU
@@ -158,5 +222,62 @@ impl MonitoringService {
     /// Check if systemd monitoring is available
     pub fn has_services(&self) -> bool {
         self.service_source.is_some()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MonitoringService;
+    use crate::domain::{
+        Container, ContainerId, ContainerState, CpuMetrics, IoMetrics, MemoryMetrics,
+        NetworkMetrics,
+    };
+    use chrono::Utc;
+
+    fn container(name: &str, stack: Option<&str>, cpu: f64, mem: u64, running: bool) -> Container {
+        let state = if running {
+            ContainerState::Running
+        } else {
+            ContainerState::Stopped
+        };
+        Container::new(
+            ContainerId::new(name),
+            name.to_string(),
+            "img".to_string(),
+            state,
+            Utc::now(),
+        )
+        .with_stack(stack.map(|s| s.to_string()))
+        .with_metrics(
+            CpuMetrics::new(cpu, 0.0, 0.0),
+            MemoryMetrics::new(mem, 0, 0),
+            NetworkMetrics::zero(),
+            IoMetrics::zero(),
+        )
+    }
+
+    #[test]
+    fn group_stacks_groups_sums_and_sorts_by_cpu() {
+        let containers = vec![
+            container("c1", Some("a"), 10.0, 100, true),
+            container("c2", Some("a"), 5.0, 200, false),
+            container("c3", Some("b"), 30.0, 50, true),
+            container("standalone", None, 99.0, 999, true),
+        ];
+
+        let stacks = MonitoringService::group_stacks(&containers);
+
+        // Containers without a stack are not grouped into any stack.
+        assert_eq!(stacks.len(), 2);
+
+        // Sorted by CPU usage descending: "b" (30) before "a" (15).
+        assert_eq!(stacks[0].name, "b");
+        assert_eq!(stacks[0].cpu_percent, 30.0);
+
+        assert_eq!(stacks[1].name, "a");
+        assert_eq!(stacks[1].cpu_percent, 15.0);
+        assert_eq!(stacks[1].memory_bytes, 300);
+        assert_eq!(stacks[1].containers_total, 2);
+        assert_eq!(stacks[1].containers_running, 1);
     }
 }

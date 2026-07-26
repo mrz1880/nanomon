@@ -158,7 +158,10 @@ Interface (HTTP API + Web UI)
 | Variable | Default | Used by | Notes |
 |----------|---------|---------|-------|
 | `NANOMON_PORT` | `3000` | main | HTTP listen port |
-| `NANOMON_POLL_INTERVAL` | `10` | - | Not used yet (no polling loop in MVP) |
+| `NANOMON_POLL_INTERVAL` | `10` | Collector | Slow-tier interval (disks, containers, processes, history) |
+| `NANOMON_FAST_INTERVAL` | `1` | Collector | Fast-tier interval (live host metrics streamed via SSE) |
+| `NANOMON_HIRES_SIZE` | `120` | Collector | High-resolution ring buffer for live charts (~2 min @ 1s) |
+| `NANOMON_SSE_KEEPALIVE` | `15` | Interface | Keep-alive interval for the `/api/stream` SSE endpoint |
 | `NANOMON_HISTORY_SIZE` | `360` | MemoryStore | Ring buffer size (1h @ 10s) |
 | `NANOMON_PROCESS_LIMIT` | `20` | API handlers | Max processes returned |
 | `DOCKER_HOST` | `unix:///var/run/docker.sock` | DockerAdapter | Docker socket path |

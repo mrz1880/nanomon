@@ -6,6 +6,9 @@ use std::path::PathBuf;
 pub struct Config {
     pub port: u16,
     pub poll_interval: u64,
+    pub fast_interval: u64,
+    pub hires_size: usize,
+    pub sse_keepalive: u64,
     pub history_size: usize,
     #[allow(dead_code)]
     pub process_limit: usize,
@@ -29,6 +32,19 @@ impl Config {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(10),
+            fast_interval: env::var("NANOMON_FAST_INTERVAL")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .filter(|&v| v >= 1)
+                .unwrap_or(1),
+            hires_size: env::var("NANOMON_HIRES_SIZE")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(120),
+            sse_keepalive: env::var("NANOMON_SSE_KEEPALIVE")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(15),
             history_size: env::var("NANOMON_HISTORY_SIZE")
                 .ok()
                 .and_then(|s| s.parse().ok())

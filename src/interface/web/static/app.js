@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     checkServicesAvailable();
     onHashChange(); // Route from initial URL
     startRefresh();
+    initLive(); // Real-time host stream (SSE) + sparklines
 });
 
 // ---- Routing ----
@@ -136,10 +137,18 @@ async function loadHost() {
     document.getElementById('ram-details').textContent =
         `${formatBytes(data.memory.used_bytes)} / ${formatBytes(data.memory.total_bytes)}`;
 
-    document.getElementById('net-rx').textContent = '0 MB/s';
-    document.getElementById('net-tx').textContent = '0 MB/s';
+    // Network throughput (rates). Live updates arrive via SSE; this is the
+    // fallback paint when the stream is not (yet) connected.
+    const nets = (data.network || []).reduce((acc, iface) => {
+        acc.rx += (iface.metrics && iface.metrics.rx_bytes_per_sec) || 0;
+        acc.tx += (iface.metrics && iface.metrics.tx_bytes_per_sec) || 0;
+        return acc;
+    }, { rx: 0, tx: 0 });
+    document.getElementById('net-rx').textContent = formatBytes(nets.rx) + '/s';
+    document.getElementById('net-tx').textContent = formatBytes(nets.tx) + '/s';
 
     renderTemperatures(data.temperatures || []);
+    scheduleSparkRedraw();
 }
 
 function renderTemperatures(temperatures) {
@@ -709,6 +718,177 @@ async function checkServicesAvailable() {
     } catch (_) {
         // ignore
     }
+}
+
+// ---- Live stream (SSE) + sparklines ----
+
+const LIVE_MAX = 150; // ~150 seconds of 1s points
+const live = {
+    cpu: [],
+    ram: [],
+    netRx: [],
+    netTx: [],
+    load1: [],
+    memTotal: 0,
+    es: null,
+    rafScheduled: false,
+};
+
+function initLive() {
+    seedLive();
+    connectStream();
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) scheduleSparkRedraw();
+    });
+}
+
+// Seed the sliding windows so charts are full on load rather than empty.
+async function seedLive() {
+    try {
+        const response = await fetch('/api/live/history');
+        const d = await response.json();
+        live.memTotal = d.mem_total || 0;
+        live.cpu = (d.cpu || []).slice(-LIVE_MAX);
+        live.ram = (d.mem_used || [])
+            .map(u => (live.memTotal > 0 ? (u / live.memTotal) * 100 : 0))
+            .slice(-LIVE_MAX);
+        live.netRx = (d.net_rx_bps || []).slice(-LIVE_MAX);
+        live.netTx = (d.net_tx_bps || []).slice(-LIVE_MAX);
+        live.load1 = (d.load_1 || []).slice(-LIVE_MAX);
+        scheduleSparkRedraw();
+    } catch (_) {
+        // No seed available yet; the stream will fill the windows.
+    }
+}
+
+function connectStream() {
+    const es = new EventSource('/api/stream');
+    live.es = es;
+    es.addEventListener('host', e => {
+        try { onHostEvent(JSON.parse(e.data)); } catch (_) { /* ignore malformed */ }
+    });
+    es.onopen = () => setLiveStatus('online');
+    es.onerror = () => setLiveStatus('offline'); // browser auto-reconnects
+}
+
+function onHostEvent(d) {
+    setLiveStatus('online');
+    live.memTotal = d.memory.total_bytes;
+    const ramPct = d.memory.total_bytes > 0 ? (d.memory.used_bytes / d.memory.total_bytes) * 100 : 0;
+    pushLive(live.cpu, d.cpu.usage_percent);
+    pushLive(live.ram, ramPct);
+    pushLive(live.netRx, d.net_rx_bps || 0);
+    pushLive(live.netTx, d.net_tx_bps || 0);
+    pushLive(live.load1, d.load_average.one);
+    updateHostLiveNumbers(d);
+    scheduleSparkRedraw();
+}
+
+function pushLive(arr, value) {
+    arr.push(value);
+    if (arr.length > LIVE_MAX) arr.shift();
+}
+
+function updateHostLiveNumbers(d) {
+    const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+    const setWidth = (id, pct) => { const el = document.getElementById(id); if (el) el.style.width = pct; };
+
+    const cpuP = d.cpu.usage_percent;
+    set('cpu-percent', cpuP.toFixed(1) + '%');
+    setWidth('cpu-bar', Math.min(cpuP, 100).toFixed(1) + '%');
+    set('cpu-details',
+        `user ${d.cpu.user_percent.toFixed(1)}% · sys ${d.cpu.system_percent.toFixed(1)}% · iowait ${(d.cpu.iowait_percent || 0).toFixed(1)}%`);
+
+    const ramP = d.memory.total_bytes > 0 ? (d.memory.used_bytes / d.memory.total_bytes) * 100 : 0;
+    set('ram-percent', ramP.toFixed(1) + '%');
+    setWidth('ram-bar', ramP.toFixed(1) + '%');
+    set('ram-details', `${formatBytes(d.memory.used_bytes)} / ${formatBytes(d.memory.total_bytes)}`);
+
+    set('load-1', d.load_average.one.toFixed(2));
+    set('load-5', d.load_average.five.toFixed(2));
+    set('load-15', d.load_average.fifteen.toFixed(2));
+
+    set('net-rx', formatBytes(d.net_rx_bps || 0) + '/s');
+    set('net-tx', formatBytes(d.net_tx_bps || 0) + '/s');
+
+    set('uptime', formatUptime(d.uptime_seconds));
+}
+
+function setLiveStatus(state) {
+    const el = document.getElementById('live-status');
+    const label = document.getElementById('live-label');
+    if (!el) return;
+    const online = state === 'online';
+    el.classList.toggle('online', online);
+    el.classList.toggle('offline', !online);
+    if (label) label.textContent = online ? 'live' : 'reconnecting';
+}
+
+function scheduleSparkRedraw() {
+    if (live.rafScheduled) return;
+    live.rafScheduled = true;
+    requestAnimationFrame(() => {
+        live.rafScheduled = false;
+        if (document.hidden) return;
+        if (currentRoute.page !== 'host') return; // sparklines live on the Host tab
+        drawSparkline('spark-cpu', live.cpu, '#58a6ff', { min: 0, max: 100 });
+        drawSparkline('spark-ram', live.ram, '#3fb950', { min: 0, max: 100 });
+        const maxNet = Math.max(1, ...live.netRx, ...live.netTx);
+        drawSparkline('spark-net', live.netRx, '#58a6ff', { min: 0, max: maxNet, series2: live.netTx, color2: '#d29922' });
+    });
+}
+
+function clamp(value, min, max) {
+    return value < min ? min : value > max ? max : value;
+}
+
+function drawSparkline(canvasId, values, color, opts) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !values || values.length === 0) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    const w = rect.width, h = rect.height;
+    if (w === 0 || h === 0) return; // hidden / not laid out
+
+    const targetW = Math.round(w * dpr), targetH = Math.round(h * dpr);
+    if (canvas.width !== targetW || canvas.height !== targetH) {
+        canvas.width = targetW;
+        canvas.height = targetH;
+    }
+
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    const min = opts.min ?? 0;
+    let max = opts.max ?? Math.max(1, ...values);
+    if (max <= min) max = min + 1;
+    const pad = 2;
+
+    const plot = (arr, col, fill) => {
+        if (!arr || arr.length === 0) return;
+        const n = arr.length;
+        ctx.beginPath();
+        arr.forEach((v, i) => {
+            const x = n > 1 ? (i / (n - 1)) * w : w;
+            const y = h - pad - ((clamp(v, min, max) - min) / (max - min)) * (h - 2 * pad);
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        if (fill) {
+            ctx.lineTo(w, h);
+            ctx.lineTo(0, h);
+            ctx.closePath();
+            ctx.fillStyle = col + '20';
+            ctx.fill();
+        }
+    };
+
+    plot(values, color, !opts.series2);
+    if (opts.series2) plot(opts.series2, opts.color2 || '#d29922', false);
 }
 
 // ---- Utilities ----

@@ -98,6 +98,12 @@ pub struct NetworkMetrics {
     pub tx_bytes: u64,
     pub rx_errors: u64,
     pub tx_errors: u64,
+    /// Receive throughput in bytes/second (None until a delta is available)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rx_bytes_per_sec: Option<f64>,
+    /// Transmit throughput in bytes/second (None until a delta is available)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tx_bytes_per_sec: Option<f64>,
 }
 
 impl NetworkMetrics {
@@ -107,6 +113,8 @@ impl NetworkMetrics {
             tx_bytes,
             rx_errors,
             tx_errors,
+            rx_bytes_per_sec: None,
+            tx_bytes_per_sec: None,
         }
     }
 
@@ -116,6 +124,8 @@ impl NetworkMetrics {
             tx_bytes: 0,
             rx_errors: 0,
             tx_errors: 0,
+            rx_bytes_per_sec: None,
+            tx_bytes_per_sec: None,
         }
     }
 }
@@ -139,5 +149,22 @@ impl LoadAverage {
             five: 0.0,
             fifteen: 0.0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NetworkMetrics;
+
+    #[test]
+    fn network_rates_default_to_none_and_are_omitted_from_json() {
+        let metrics = NetworkMetrics::new(10, 20, 0, 0);
+        assert!(metrics.rx_bytes_per_sec.is_none());
+        assert!(metrics.tx_bytes_per_sec.is_none());
+
+        // Rates are skipped in JSON until a delta is available.
+        let json = serde_json::to_string(&metrics).unwrap();
+        assert!(!json.contains("rx_bytes_per_sec"));
+        assert!(!json.contains("tx_bytes_per_sec"));
     }
 }

@@ -1,3 +1,4 @@
+use std::convert::Infallible;
 use std::fmt::Write;
 use std::sync::Arc;
 use std::time::Duration;
@@ -6,13 +7,20 @@ use axum::{
     debug_handler,
     extract::{Path, Query, State},
     http::StatusCode,
+    response::sse::{Event, KeepAlive, Sse},
     response::{IntoResponse, Response},
     Json,
 };
+use futures::Stream;
 use serde::{Deserialize, Serialize};
+use tokio_stream::wrappers::BroadcastStream;
+use tokio_stream::StreamExt as _;
 
-use crate::application::MonitoringService;
-use crate::domain::{Container, Host, Process, Stack, SystemdService, Temperature};
+use crate::application::{Collector, MonitoringService};
+use crate::domain::{
+    Container, CpuMetrics, Host, LoadAverage, MemoryMetrics, Process, Stack, SystemdService,
+    Temperature,
+};
 
 /// Custom error type that implements IntoResponse
 #[derive(Debug)]
@@ -35,6 +43,32 @@ impl From<Box<dyn std::error::Error + Send + Sync>> for AppError {
 #[derive(Clone)]
 pub struct AppState {
     pub monitoring_service: Arc<MonitoringService>,
+    pub live: Arc<Collector>,
+    pub sse_keepalive: u64,
+}
+
+/// Build the freshest possible host view: fast-tier metrics (cpu/mem/load/net,
+/// ~1s old) merged with slow-tier resources (disks/temps/containers/processes,
+/// ~10s old). Falls back to a live collection only before the first snapshot.
+async fn current_snapshot(
+    state: &AppState,
+) -> Result<Host, Box<dyn std::error::Error + Send + Sync>> {
+    let fast = state.live.hires_store().get_latest();
+    let full = state.monitoring_service.get_latest_snapshot();
+
+    match (fast, full) {
+        (Some(f), Some(u)) => {
+            let mut host = (*f).clone();
+            host.disks = u.disks.clone();
+            host.temperatures = u.temperatures.clone();
+            host.containers = u.containers.clone();
+            host.processes = u.processes.clone();
+            Ok(host)
+        }
+        (Some(f), None) => Ok((*f).clone()),
+        (None, Some(u)) => Ok((*u).clone()),
+        (None, None) => state.monitoring_service.collect_all().await,
+    }
 }
 
 /// Response for /api/host
@@ -46,6 +80,7 @@ pub struct HostResponse {
     pub load_average: serde_json::Value,
     pub cpu: serde_json::Value,
     pub memory: serde_json::Value,
+    pub network: serde_json::Value,
     pub temperatures: Vec<Temperature>,
 }
 
@@ -58,6 +93,7 @@ impl From<&Host> for HostResponse {
             load_average: serde_json::to_value(&host.load_average).unwrap(),
             cpu: serde_json::to_value(&host.cpu).unwrap(),
             memory: serde_json::to_value(&host.memory).unwrap(),
+            network: serde_json::to_value(&host.network_interfaces).unwrap(),
             temperatures: host.temperatures.clone(),
         }
     }
@@ -164,10 +200,107 @@ pub async fn health_handler() -> (StatusCode, Json<serde_json::Value>) {
     )
 }
 
+/// Sum of per-interface throughput rates (bytes/second) across a host.
+fn net_rates(host: &Host) -> (f64, f64) {
+    host.network_interfaces
+        .iter()
+        .fold((0.0, 0.0), |(rx, tx), i| {
+            (
+                rx + i.metrics.rx_bytes_per_sec.unwrap_or(0.0),
+                tx + i.metrics.tx_bytes_per_sec.unwrap_or(0.0),
+            )
+        })
+}
+
+/// Compact live host payload pushed over SSE (~1s cadence).
+#[derive(Serialize)]
+struct LiveHost {
+    ts: String,
+    uptime_seconds: u64,
+    cpu: CpuMetrics,
+    memory: MemoryMetrics,
+    load_average: LoadAverage,
+    net_rx_bps: f64,
+    net_tx_bps: f64,
+}
+
+impl From<&Host> for LiveHost {
+    fn from(host: &Host) -> Self {
+        let (net_rx_bps, net_tx_bps) = net_rates(host);
+        Self {
+            ts: host.timestamp.to_rfc3339(),
+            uptime_seconds: host.uptime_seconds,
+            cpu: host.cpu.clone(),
+            memory: host.memory.clone(),
+            load_average: host.load_average.clone(),
+            net_rx_bps,
+            net_tx_bps,
+        }
+    }
+}
+
+/// Handler for GET /api/stream (Server-Sent Events: live host metrics).
+pub async fn stream_handler(
+    State(state): State<AppState>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let rx = state.live.subscribe();
+    let stream = BroadcastStream::new(rx).filter_map(|res| match res {
+        Ok(host) => Event::default()
+            .event("host")
+            .json_data(LiveHost::from(host.as_ref()))
+            .ok()
+            .map(Ok),
+        // A lagged receiver (slow client) just skips missed ticks.
+        Err(_lagged) => None,
+    });
+
+    Sse::new(stream).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(state.sse_keepalive))
+            .text("keep-alive"),
+    )
+}
+
+/// Response for GET /api/live/history (seed for live sparklines)
+#[derive(Debug, Serialize)]
+pub struct LiveHistoryResponse {
+    pub timestamps: Vec<String>,
+    pub cpu: Vec<f64>,
+    pub mem_used: Vec<u64>,
+    pub mem_total: u64,
+    pub net_rx_bps: Vec<f64>,
+    pub net_tx_bps: Vec<f64>,
+    pub load_1: Vec<f64>,
+}
+
+/// Handler for GET /api/live/history (high-resolution window to seed charts)
+#[debug_handler]
+pub async fn live_history_handler(State(state): State<AppState>) -> Response {
+    // The hi-res store holds only ~120 recent points; a wide window returns all.
+    let history = state
+        .live
+        .hires_store()
+        .get_history(Duration::from_secs(86_400));
+
+    let mem_total = history.last().map(|h| h.memory.total_bytes).unwrap_or(0);
+
+    let response = LiveHistoryResponse {
+        timestamps: history.iter().map(|h| h.timestamp.to_rfc3339()).collect(),
+        cpu: history.iter().map(|h| h.cpu.usage_percent).collect(),
+        mem_used: history.iter().map(|h| h.memory.used_bytes).collect(),
+        mem_total,
+        net_rx_bps: history.iter().map(|h| net_rates(h).0).collect(),
+        net_tx_bps: history.iter().map(|h| net_rates(h).1).collect(),
+        load_1: history.iter().map(|h| h.load_average.one).collect(),
+    };
+
+    (StatusCode::OK, Json(response)).into_response()
+}
+
 /// Handler for GET /api/host
 #[debug_handler]
 pub async fn host_handler(State(state): State<AppState>) -> Response {
-    match state.monitoring_service.collect_all().await {
+    match current_snapshot(&state).await {
         Ok(host) => (StatusCode::OK, Json(HostResponse::from(&host))).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
@@ -232,7 +365,7 @@ pub async fn processes_handler(
 /// Handler for GET /api/disks
 #[debug_handler]
 pub async fn disks_handler(State(state): State<AppState>) -> Response {
-    match state.monitoring_service.collect_all().await {
+    match current_snapshot(&state).await {
         Ok(host) => (
             StatusCode::OK,
             Json(DisksResponse {
@@ -248,7 +381,7 @@ pub async fn disks_handler(State(state): State<AppState>) -> Response {
 /// Handler for GET /api/network
 #[debug_handler]
 pub async fn network_handler(State(state): State<AppState>) -> Response {
-    match state.monitoring_service.collect_all().await {
+    match current_snapshot(&state).await {
         Ok(host) => (
             StatusCode::OK,
             Json(NetworkResponse {
@@ -264,20 +397,22 @@ pub async fn network_handler(State(state): State<AppState>) -> Response {
 /// Handler for GET /api/dashboard (aggregated endpoint)
 #[debug_handler]
 pub async fn dashboard_handler(State(state): State<AppState>) -> Response {
-    let host = match state.monitoring_service.collect_all().await {
+    let host = match current_snapshot(&state).await {
         Ok(h) => h,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     };
 
-    let stacks = match state.monitoring_service.get_stacks().await {
-        Ok(s) => s,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
-    };
+    // Derive stacks and top processes from the stored snapshot instead of
+    // re-querying Docker / procfs on every dashboard poll.
+    let stacks = MonitoringService::group_stacks(&host.containers);
 
-    let processes = match state.monitoring_service.get_top_processes_by_cpu(20).await {
-        Ok(p) => p,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
-    };
+    let mut processes = host.processes.clone();
+    processes.sort_by(|a, b| {
+        b.cpu_percent
+            .partial_cmp(&a.cpu_percent)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    processes.truncate(20);
 
     (
         StatusCode::OK,

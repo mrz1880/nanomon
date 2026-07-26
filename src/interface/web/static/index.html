@@ -19,7 +19,7 @@
                 <button class="tab-btn" data-tab="services">Services</button>
             </nav>
             <div class="refresh-info">
-                <span id="refresh-interval">&#8635; 10s</span>
+                <span id="live-status" class="live-status offline"><span class="live-dot"></span> <span id="live-label">connecting</span></span>
             </div>
         </header>
 
@@ -49,6 +49,7 @@
                         <span id="cpu-percent">0%</span>
                         <span id="cpu-details">user 0% &middot; sys 0% &middot; iowait 0%</span>
                     </div>
+                    <canvas class="sparkline" id="spark-cpu" width="320" height="48"></canvas>
                 </div>
 
                 <div class="metric-card">
@@ -60,14 +61,16 @@
                         <span id="ram-percent">0%</span>
                         <span id="ram-details">0 GB / 0 GB</span>
                     </div>
+                    <canvas class="sparkline" id="spark-ram" width="320" height="48"></canvas>
                 </div>
 
                 <div class="metric-card">
                     <h3>NET</h3>
                     <div class="net-stats">
-                        <div>&#9660; <span id="net-rx">0 MB/s</span></div>
-                        <div>&#9650; <span id="net-tx">0 MB/s</span></div>
+                        <div>&#9660; <span id="net-rx">0 B/s</span></div>
+                        <div>&#9650; <span id="net-tx">0 B/s</span></div>
                     </div>
+                    <canvas class="sparkline" id="spark-net" width="320" height="48"></canvas>
                 </div>
             </div>
 

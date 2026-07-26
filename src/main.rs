@@ -6,7 +6,6 @@ mod interface;
 mod ports;
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -14,7 +13,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use adapters::{
     DockerAdapter, MemoryStore, ProcfsAdapter, ProcfsConfig, SystemctlAdapter, WebhookSink,
 };
-use application::{AlertEvaluator, MonitoringService};
+use application::{AlertEvaluator, Collector, MonitoringService};
 use config::Config;
 use domain::AlertRule;
 use interface::http::create_router;
@@ -83,32 +82,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     }
 
-    // Start background polling loop
-    let poll_service = monitoring_service.clone();
-    let poll_interval = config.poll_interval;
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(poll_interval));
-        loop {
-            interval.tick().await;
-            match poll_service.collect_all().await {
-                Ok(snapshot) => {
-                    // Evaluate alerts before storing
-                    if let Some(ref evaluator) = alert_evaluator {
-                        evaluator.evaluate(&snapshot).await;
-                    }
-                    poll_service.store_snapshot(snapshot);
-                }
-                Err(e) => {
-                    tracing::error!("Failed to collect metrics: {}", e);
-                }
-            }
-        }
-    });
+    // High-resolution store for the live (fast-tier) charts.
+    let hires_store = Arc::new(MemoryStore::new(config.hires_size));
 
-    info!("Background polling started (interval: {}s)", poll_interval);
+    // Two-speed background collector: fast host loop + slow resource loop.
+    let collector = Collector::new(
+        monitoring_service.clone(),
+        hires_store,
+        alert_evaluator,
+        config.fast_interval,
+        config.poll_interval,
+    );
+    collector.clone().spawn();
+
+    info!(
+        "Background collection started (fast: {}s, slow: {}s)",
+        config.fast_interval, config.poll_interval
+    );
 
     // Create HTTP server
-    let app = create_router(monitoring_service);
+    let app = create_router(monitoring_service, collector, config.sse_keepalive);
     let addr = format!("0.0.0.0:{}", config.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
 
@@ -122,7 +115,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     Ok(())
 }
 
-fn load_alert_evaluator(config: &Config) -> Option<AlertEvaluator> {
+fn load_alert_evaluator(config: &Config) -> Option<Arc<AlertEvaluator>> {
     let path = config.alert_config_path.as_ref()?;
 
     let content = match std::fs::read_to_string(path) {
@@ -150,7 +143,7 @@ fn load_alert_evaluator(config: &Config) -> Option<AlertEvaluator> {
 
     info!("Loaded {} alert rules from {:?}", rules.len(), path);
     let sink = Arc::new(WebhookSink::new());
-    Some(AlertEvaluator::new(rules, sink))
+    Some(Arc::new(AlertEvaluator::new(rules, sink)))
 }
 
 #[derive(serde::Deserialize)]

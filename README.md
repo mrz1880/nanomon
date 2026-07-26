@@ -108,7 +108,10 @@ Customize NanoMon via environment variables:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NANOMON_PORT` | `3000` | HTTP server port |
-| `NANOMON_POLL_INTERVAL` | `10` | Polling interval in seconds (future use) |
+| `NANOMON_POLL_INTERVAL` | `10` | Slow-tier interval in seconds (disks, containers, processes, history) |
+| `NANOMON_FAST_INTERVAL` | `1` | Fast-tier interval in seconds (live host metrics streamed over SSE) |
+| `NANOMON_HIRES_SIZE` | `120` | High-resolution points kept for live charts (~2 min @ 1s) |
+| `NANOMON_SSE_KEEPALIVE` | `15` | Keep-alive interval in seconds for the `/api/stream` SSE endpoint |
 | `NANOMON_HISTORY_SIZE` | `360` | Number of snapshots to keep (1h @ 10s interval) |
 | `NANOMON_PROCESS_LIMIT` | `20` | Maximum processes to display in UI |
 | `DOCKER_HOST` | `unix:///var/run/docker.sock` | Docker socket path |

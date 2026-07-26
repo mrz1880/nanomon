@@ -128,6 +128,26 @@ Customize NanoMon via environment variables:
 NANOMON_PORT=8080 docker compose up -d
 ```
 
+## 🔐 Privileges & Graceful Degradation
+
+NanoMon degrades gracefully: if a source can't be read (permission denied,
+feature disabled, hardware absent), that metric is skipped and logged, and the
+rest of the collection continues — the process never aborts. A startup
+self-check logs which sources are available.
+
+Run it with the **least privilege** each feature needs:
+
+| Feature | Requires |
+|---------|----------|
+| Host metrics (CPU, RAM, load, network) | Read access to `/proc` and `/sys` |
+| Per-process list | Read access to other users' `/proc/<pid>` (usually root or `--pid=host`); unreadable PIDs are skipped |
+| Temperatures | Read access to `/sys/class/hwmon` or `/sys/class/thermal` (absent hardware → section hidden) |
+| Docker containers | Read access to the Docker socket (`/var/run/docker.sock`); if unavailable, container monitoring is disabled |
+| Systemd services | `NANOMON_ENABLE_SYSTEMD=true` and `systemctl` on `PATH`; the Services tab hides itself when unavailable |
+
+Running as a non-root user is fine — you simply get fewer metrics (e.g. only
+your own processes), not a crash.
+
 ## 🔌 API Reference
 
 NanoMon exposes a REST API for programmatic access:

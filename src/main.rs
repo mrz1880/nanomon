@@ -75,6 +75,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     info!("Monitoring service initialized");
 
+    // Startup self-check: report which sources are available so operators can
+    // see, at a glance, what a reduced-privilege deployment can and cannot read.
+    let procfs_ok = std::fs::metadata(config.proc_path.join("stat")).is_ok();
+    info!("Source self-check:");
+    info!("  docker: connected");
+    info!(
+        "  procfs ({}): {}",
+        config.proc_path.display(),
+        if procfs_ok {
+            "readable"
+        } else {
+            "NOT readable"
+        }
+    );
+    info!(
+        "  systemd services: {}",
+        if monitoring_service.has_services() {
+            "available"
+        } else {
+            "disabled / unavailable"
+        }
+    );
+
     // Load alert rules if configured
     let alert_evaluator = load_alert_evaluator(&config);
     if let Some(ref evaluator) = alert_evaluator {

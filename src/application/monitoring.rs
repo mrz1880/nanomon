@@ -1,9 +1,15 @@
 use std::sync::Arc;
 
 use chrono::Utc;
+use tracing::warn;
 
-use crate::domain::{Container, Disk, Host, Process, Stack, SystemdService, Temperature};
-use crate::ports::{ContainerSource, MetricStore, ProcessSource, ServiceSource, SystemSource};
+use crate::domain::{
+    Container, CpuMetrics, Disk, Host, LoadAverage, MemoryMetrics, Process, Stack, SystemdService,
+    Temperature,
+};
+use crate::ports::{
+    ContainerSource, HostInfo, MetricStore, ProcessSource, ServiceSource, SystemSource,
+};
 
 /// Slow-tier resources collected less frequently than host metrics.
 pub struct SlowResources {
@@ -85,13 +91,52 @@ impl MonitoringService {
     /// fast loop must be the only caller in the hot path; read handlers serve
     /// from the store instead of re-collecting.
     pub async fn collect_host(&self) -> Result<Host, Box<dyn std::error::Error + Send + Sync>> {
-        let (host_info, cpu, memory, load_avg, interfaces) = tokio::try_join!(
-            self.system_source.get_host_info(),
-            self.system_source.get_cpu_metrics(),
-            self.system_source.get_memory_metrics(),
-            self.system_source.get_load_average(),
-            self.system_source.list_network_interfaces(),
-        )?;
+        // Collect each metric independently so a single unreadable source
+        // (e.g. a permission error) degrades that metric instead of blanking
+        // the whole snapshot.
+        let host_info = self
+            .system_source
+            .get_host_info()
+            .await
+            .unwrap_or_else(|e| {
+                warn!("Host info unavailable: {}", e);
+                HostInfo {
+                    hostname: "unknown".to_string(),
+                    uptime_seconds: 0,
+                }
+            });
+        let cpu = self
+            .system_source
+            .get_cpu_metrics()
+            .await
+            .unwrap_or_else(|e| {
+                warn!("CPU metrics unavailable: {}", e);
+                CpuMetrics::new(0.0, 0.0, 0.0)
+            });
+        let memory = self
+            .system_source
+            .get_memory_metrics()
+            .await
+            .unwrap_or_else(|e| {
+                warn!("Memory metrics unavailable: {}", e);
+                MemoryMetrics::new(0, 0, 0)
+            });
+        let load_avg = self
+            .system_source
+            .get_load_average()
+            .await
+            .unwrap_or_else(|e| {
+                warn!("Load average unavailable: {}", e);
+                LoadAverage::zero()
+            });
+        let interfaces = self
+            .system_source
+            .list_network_interfaces()
+            .await
+            .unwrap_or_else(|e| {
+                warn!("Network interfaces unavailable: {}", e);
+                Vec::new()
+            });
 
         let host = Host::new(host_info.hostname)
             .with_metrics(host_info.uptime_seconds, load_avg, cpu, memory)
@@ -105,11 +150,28 @@ impl MonitoringService {
     pub async fn collect_slow(
         &self,
     ) -> Result<SlowResources, Box<dyn std::error::Error + Send + Sync>> {
-        let (disks, containers, processes) = tokio::try_join!(
-            self.system_source.list_disks(),
-            self.container_source.list_containers(),
-            self.process_source.list_processes(),
-        )?;
+        // Each source degrades independently: an unavailable one yields an empty
+        // list (logged) rather than failing the whole slow-tier collection.
+        let disks = self.system_source.list_disks().await.unwrap_or_else(|e| {
+            warn!("Disks unavailable: {}", e);
+            Vec::new()
+        });
+        let containers = self
+            .container_source
+            .list_containers()
+            .await
+            .unwrap_or_else(|e| {
+                warn!("Containers unavailable: {}", e);
+                Vec::new()
+            });
+        let processes = self
+            .process_source
+            .list_processes()
+            .await
+            .unwrap_or_else(|e| {
+                warn!("Processes unavailable: {}", e);
+                Vec::new()
+            });
 
         // Temperatures are optional - don't fail the whole collection.
         let temperatures = self
@@ -284,5 +346,108 @@ mod tests {
         assert_eq!(stacks[1].memory_bytes, 300);
         assert_eq!(stacks[1].containers_total, 2);
         assert_eq!(stacks[1].containers_running, 1);
+    }
+
+    // --- Graceful degradation ---
+
+    use crate::domain::{Disk, Host, LoadAverage, NetworkInterface, Process};
+    use crate::ports::{
+        ContainerSource, ContainerStats, HostInfo, MetricStore, ProcessSource, SystemSource,
+    };
+    use async_trait::async_trait;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    type BoxErr = Box<dyn std::error::Error + Send + Sync>;
+
+    struct MockSys {
+        fail_cpu: bool,
+    }
+
+    #[async_trait]
+    impl SystemSource for MockSys {
+        async fn get_host_info(&self) -> Result<HostInfo, BoxErr> {
+            Ok(HostInfo {
+                hostname: "h".to_string(),
+                uptime_seconds: 42,
+            })
+        }
+        async fn get_cpu_metrics(&self) -> Result<CpuMetrics, BoxErr> {
+            if self.fail_cpu {
+                Err("cpu boom".into())
+            } else {
+                Ok(CpuMetrics::new(50.0, 0.0, 0.0))
+            }
+        }
+        async fn get_memory_metrics(&self) -> Result<MemoryMetrics, BoxErr> {
+            Ok(MemoryMetrics::new(100, 200, 100))
+        }
+        async fn get_load_average(&self) -> Result<LoadAverage, BoxErr> {
+            Ok(LoadAverage::new(1.0, 2.0, 3.0))
+        }
+        async fn list_disks(&self) -> Result<Vec<Disk>, BoxErr> {
+            Ok(vec![])
+        }
+        async fn list_network_interfaces(&self) -> Result<Vec<NetworkInterface>, BoxErr> {
+            Ok(vec![])
+        }
+    }
+
+    struct MockContainers;
+    #[async_trait]
+    impl ContainerSource for MockContainers {
+        async fn list_containers(&self) -> Result<Vec<Container>, BoxErr> {
+            Ok(vec![])
+        }
+        async fn get_container_stats(&self, _id: &ContainerId) -> Result<ContainerStats, BoxErr> {
+            Err("n/a".into())
+        }
+    }
+
+    struct MockProcs;
+    #[async_trait]
+    impl ProcessSource for MockProcs {
+        async fn list_processes(&self) -> Result<Vec<Process>, BoxErr> {
+            Ok(vec![])
+        }
+        async fn get_top_by_cpu(&self, _n: usize) -> Result<Vec<Process>, BoxErr> {
+            Ok(vec![])
+        }
+        async fn get_top_by_memory(&self, _n: usize) -> Result<Vec<Process>, BoxErr> {
+            Ok(vec![])
+        }
+    }
+
+    struct MockStore;
+    impl MetricStore for MockStore {
+        fn store(&self, _snapshot: Host) {}
+        fn get_latest(&self) -> Option<Arc<Host>> {
+            None
+        }
+        fn get_history(&self, _d: Duration) -> Vec<Arc<Host>> {
+            vec![]
+        }
+        fn len(&self) -> usize {
+            0
+        }
+    }
+
+    #[tokio::test]
+    async fn collect_host_degrades_on_partial_failure() {
+        let svc = MonitoringService::new(
+            Arc::new(MockSys { fail_cpu: true }),
+            Arc::new(MockContainers),
+            Arc::new(MockProcs),
+            Arc::new(MockStore),
+        );
+
+        let host = svc.collect_host().await.unwrap();
+
+        // The CPU source failed -> defaulted to zero, but every other metric
+        // was still collected.
+        assert_eq!(host.cpu.usage_percent, 0.0);
+        assert_eq!(host.memory.total_bytes, 200);
+        assert_eq!(host.load_average.one, 1.0);
+        assert_eq!(host.hostname, "h");
     }
 }

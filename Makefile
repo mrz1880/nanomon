@@ -7,8 +7,8 @@ COV_IGNORE := (main\.rs|interface/|ports/)
 # not turn CI red. Raise them as tests are added; never lower without discussion.
 # Minimum line coverage of the business logic (currently ~86%).
 COV_MIN := 80
-# Minimum mutation score, killed / viable mutants (currently ~69%).
-MUTATION_MIN := 65
+# Minimum mutation score, killed / viable mutants (currently ~81%).
+MUTATION_MIN := 75
 
 .PHONY: fmt lint test coverage coverage-html mutants check
 

@@ -339,7 +339,11 @@ never lower one without discussing it.
 | Metric | Current | Gate | Target |
 |--------|---------|------|--------|
 | Line coverage (business logic) | ~86% | `COV_MIN` = 80 | reached |
-| Mutation score (killed / viable) | ~69% | `MUTATION_MIN` = 65 | 75% |
+| Mutation score (killed / viable) | ~81% | `MUTATION_MIN` = 75 | reached |
+
+Surviving mutants are concentrated in `systemd`, `dirusage`, `config`,
+`collector` and the webhook/scrape I/O wrappers; the domain, procfs and
+monitoring layers have none left.
 
 - **Coverage** (`cargo-llvm-cov`): `make coverage` (summary + threshold) or
   `make coverage-html` (browsable report). The gate ignores `main.rs`, the HTTP

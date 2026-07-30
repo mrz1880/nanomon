@@ -350,7 +350,9 @@ mod tests {
 
     // --- Graceful degradation ---
 
-    use crate::domain::{Disk, Host, LoadAverage, NetworkInterface, Process};
+    use crate::domain::{
+        Disk, Host, LoadAverage, NetworkInterface, Process, SystemdService, Temperature,
+    };
     use crate::ports::{
         ContainerSource, ContainerStats, HostInfo, MetricStore, ProcessSource, SystemSource,
     };
@@ -360,8 +362,11 @@ mod tests {
 
     type BoxErr = Box<dyn std::error::Error + Send + Sync>;
 
+    #[derive(Default)]
     struct MockSys {
         fail_cpu: bool,
+        fail_disks: bool,
+        fail_temps: bool,
     }
 
     #[async_trait]
@@ -386,35 +391,113 @@ mod tests {
             Ok(LoadAverage::new(1.0, 2.0, 3.0))
         }
         async fn list_disks(&self) -> Result<Vec<Disk>, BoxErr> {
-            Ok(vec![])
+            if self.fail_disks {
+                return Err("disks boom".into());
+            }
+            Ok(vec![Disk::new(
+                "/dev/sda".to_string(),
+                "/".to_string(),
+                "ext4".to_string(),
+                1000,
+                500,
+                500,
+            )])
         }
         async fn list_network_interfaces(&self) -> Result<Vec<NetworkInterface>, BoxErr> {
-            Ok(vec![])
+            Ok(vec![NetworkInterface::new(
+                "eth0".to_string(),
+                true,
+                crate::domain::NetworkMetrics::new(10, 20, 0, 0),
+            )])
+        }
+        async fn get_temperatures(&self) -> Result<Vec<Temperature>, BoxErr> {
+            if self.fail_temps {
+                return Err("sensors boom".into());
+            }
+            Ok(vec![Temperature::new(
+                "cpu".to_string(),
+                crate::domain::TemperatureSource::Cpu,
+                50.0,
+            )])
         }
     }
 
-    struct MockContainers;
+    #[derive(Default)]
+    struct MockContainers {
+        fail: bool,
+    }
+
     #[async_trait]
     impl ContainerSource for MockContainers {
         async fn list_containers(&self) -> Result<Vec<Container>, BoxErr> {
-            Ok(vec![])
+            if self.fail {
+                return Err("docker down".into());
+            }
+            Ok(vec![
+                container("web", Some("blog"), 10.0, 100, true),
+                container("db", Some("blog"), 5.0, 200, true),
+                container("solo", None, 1.0, 10, false),
+            ])
         }
         async fn get_container_stats(&self, _id: &ContainerId) -> Result<ContainerStats, BoxErr> {
             Err("n/a".into())
         }
     }
 
-    struct MockProcs;
+    #[derive(Default)]
+    struct MockProcs {
+        fail: bool,
+    }
+
+    fn proc(pid: u32, cpu: f64, mem: u64) -> Process {
+        Process::new(
+            pid,
+            1,
+            "root".to_string(),
+            format!("p{pid}"),
+            crate::domain::ProcessState::Running,
+        )
+        .with_metrics(cpu, 0.0, mem)
+    }
+
     #[async_trait]
     impl ProcessSource for MockProcs {
         async fn list_processes(&self) -> Result<Vec<Process>, BoxErr> {
-            Ok(vec![])
+            if self.fail {
+                return Err("procfs down".into());
+            }
+            Ok(vec![proc(1, 5.0, 100), proc(2, 50.0, 10)])
         }
-        async fn get_top_by_cpu(&self, _n: usize) -> Result<Vec<Process>, BoxErr> {
-            Ok(vec![])
+        async fn get_top_by_cpu(&self, n: usize) -> Result<Vec<Process>, BoxErr> {
+            let mut v = self.list_processes().await?;
+            v.sort_by(|a, b| b.cpu_percent.total_cmp(&a.cpu_percent));
+            v.truncate(n);
+            Ok(v)
         }
-        async fn get_top_by_memory(&self, _n: usize) -> Result<Vec<Process>, BoxErr> {
-            Ok(vec![])
+        async fn get_top_by_memory(&self, n: usize) -> Result<Vec<Process>, BoxErr> {
+            let mut v = self.list_processes().await?;
+            v.sort_by_key(|p| std::cmp::Reverse(p.memory_bytes));
+            v.truncate(n);
+            Ok(v)
+        }
+    }
+
+    struct MockServices {
+        available: bool,
+    }
+
+    #[async_trait]
+    impl crate::ports::ServiceSource for MockServices {
+        async fn list_services(&self) -> Result<Vec<SystemdService>, BoxErr> {
+            Ok(vec![SystemdService::new(
+                "nginx".to_string(),
+                String::new(),
+                crate::domain::ServiceState::Active,
+                "running".to_string(),
+            )])
+        }
+        fn is_available(&self) -> bool {
+            self.available
         }
     }
 
@@ -432,12 +515,65 @@ mod tests {
         }
     }
 
+    /// A service wired with healthy mocks and a real in-memory store.
+    fn service() -> MonitoringService {
+        MonitoringService::new(
+            Arc::new(MockSys::default()),
+            Arc::new(MockContainers::default()),
+            Arc::new(MockProcs::default()),
+            Arc::new(crate::adapters::MemoryStore::new(10)),
+        )
+    }
+
+    #[tokio::test]
+    async fn collect_all_assembles_a_full_snapshot() {
+        let host = service().collect_all().await.unwrap();
+
+        assert_eq!(host.hostname, "h");
+        assert_eq!(host.uptime_seconds, 42);
+        assert_eq!(host.cpu.usage_percent, 50.0);
+        assert_eq!(host.memory.total_bytes, 200);
+        assert_eq!(host.load_average.one, 1.0);
+        assert_eq!(host.network_interfaces.len(), 1);
+        assert_eq!(host.disks.len(), 1);
+        assert_eq!(host.containers.len(), 3);
+        assert_eq!(host.processes.len(), 2);
+        assert_eq!(host.temperatures.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn collect_all_fails_when_a_required_source_fails() {
+        // collect_all joins the required sources, so a hard failure propagates.
+        let svc = MonitoringService::new(
+            Arc::new(MockSys::default()),
+            Arc::new(MockContainers { fail: true }),
+            Arc::new(MockProcs::default()),
+            Arc::new(MockStore),
+        );
+        assert!(svc.collect_all().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn collect_host_only_reads_fast_tier_sources() {
+        let host = service().collect_host().await.unwrap();
+
+        assert_eq!(host.cpu.usage_percent, 50.0);
+        assert_eq!(host.network_interfaces.len(), 1);
+        // Slow-tier resources are deliberately left out.
+        assert!(host.disks.is_empty());
+        assert!(host.containers.is_empty());
+        assert!(host.processes.is_empty());
+    }
+
     #[tokio::test]
     async fn collect_host_degrades_on_partial_failure() {
         let svc = MonitoringService::new(
-            Arc::new(MockSys { fail_cpu: true }),
-            Arc::new(MockContainers),
-            Arc::new(MockProcs),
+            Arc::new(MockSys {
+                fail_cpu: true,
+                ..Default::default()
+            }),
+            Arc::new(MockContainers::default()),
+            Arc::new(MockProcs::default()),
             Arc::new(MockStore),
         );
 
@@ -449,5 +585,116 @@ mod tests {
         assert_eq!(host.memory.total_bytes, 200);
         assert_eq!(host.load_average.one, 1.0);
         assert_eq!(host.hostname, "h");
+    }
+
+    #[tokio::test]
+    async fn collect_slow_gathers_every_resource() {
+        let slow = service().collect_slow().await.unwrap();
+
+        assert_eq!(slow.disks.len(), 1);
+        assert_eq!(slow.containers.len(), 3);
+        assert_eq!(slow.processes.len(), 2);
+        assert_eq!(slow.temperatures.len(), 1);
+        // No service source configured.
+        assert!(slow.services.is_empty());
+    }
+
+    #[tokio::test]
+    async fn collect_slow_degrades_each_source_independently() {
+        let svc = MonitoringService::new(
+            Arc::new(MockSys {
+                fail_disks: true,
+                fail_temps: true,
+                ..Default::default()
+            }),
+            Arc::new(MockContainers { fail: true }),
+            Arc::new(MockProcs::default()),
+            Arc::new(MockStore),
+        );
+
+        let slow = svc.collect_slow().await.unwrap();
+
+        // Failing sources yield empty lists; the healthy one still reports.
+        assert!(slow.disks.is_empty());
+        assert!(slow.containers.is_empty());
+        assert!(slow.temperatures.is_empty());
+        assert_eq!(slow.processes.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn get_stacks_groups_containers_from_the_source() {
+        let stacks = service().get_stacks().await.unwrap();
+
+        // "solo" has no stack label, so only "blog" is reported.
+        assert_eq!(stacks.len(), 1);
+        assert_eq!(stacks[0].name, "blog");
+        assert_eq!(stacks[0].containers_total, 2);
+        assert_eq!(stacks[0].cpu_percent, 15.0);
+    }
+
+    #[tokio::test]
+    async fn get_containers_propagates_source_failures() {
+        let svc = MonitoringService::new(
+            Arc::new(MockSys::default()),
+            Arc::new(MockContainers { fail: true }),
+            Arc::new(MockProcs::default()),
+            Arc::new(MockStore),
+        );
+        assert!(svc.get_containers().await.is_err());
+        assert!(svc.get_stacks().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn top_processes_delegate_to_the_source_ordering() {
+        let svc = service();
+
+        let by_cpu = svc.get_top_processes_by_cpu(1).await.unwrap();
+        assert_eq!(by_cpu.len(), 1);
+        assert_eq!(by_cpu[0].pid, 2); // 50% cpu
+
+        let by_mem = svc.get_top_processes_by_memory(1).await.unwrap();
+        assert_eq!(by_mem[0].pid, 1); // 100 bytes
+
+        assert_eq!(svc.get_all_processes().await.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn services_are_absent_until_a_source_is_wired() {
+        let svc = service();
+        assert!(!svc.has_services());
+        assert!(svc.get_services().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_available_service_source_is_used() {
+        let svc = service().with_service_source(Arc::new(MockServices { available: true }));
+
+        assert!(svc.has_services());
+        let services = svc.get_services().await.unwrap();
+        assert_eq!(services.len(), 1);
+        assert_eq!(services[0].name, "nginx");
+
+        // And it now flows into the slow tier.
+        assert_eq!(svc.collect_slow().await.unwrap().services.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn an_unavailable_service_source_is_ignored() {
+        // e.g. systemd requested but systemctl is missing.
+        let svc = service().with_service_source(Arc::new(MockServices { available: false }));
+        assert!(!svc.has_services());
+        assert!(svc.get_services().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn snapshots_are_stored_and_read_back() {
+        let svc = service();
+        assert!(svc.get_latest_snapshot().is_none());
+
+        svc.store_snapshot(Host::new("first".to_string()));
+        svc.store_snapshot(Host::new("second".to_string()));
+
+        assert_eq!(svc.get_latest_snapshot().unwrap().hostname, "second");
+        assert_eq!(svc.get_history(Duration::from_secs(3600)).len(), 2);
     }
 }

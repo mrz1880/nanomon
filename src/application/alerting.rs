@@ -191,8 +191,11 @@ impl AlertEvaluator {
 #[cfg(test)]
 mod tests {
     use super::AlertEvaluator;
+    use crate::domain::alert::AlertCondition;
     use crate::domain::{
-        AlertEvent, ServiceAlertEvent, ServiceAlertRule, ServiceState, SystemdService,
+        AlertEvent, AlertMetric, AlertRule, CpuMetrics, Disk, ExternalMetric, Host, LoadAverage,
+        MemoryMetrics, ServiceAlertEvent, ServiceAlertRule, ServiceState, SystemdService,
+        Temperature, TemperatureSource,
     };
     use crate::ports::AlertSink;
     use async_trait::async_trait;
@@ -216,6 +219,249 @@ mod tests {
         ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             Ok(())
         }
+    }
+
+    /// Captures what was sent, so tests can assert on the payload.
+    #[derive(Default)]
+    struct RecordingSink {
+        sent: std::sync::Mutex<Vec<AlertEvent>>,
+    }
+
+    impl RecordingSink {
+        fn events(&self) -> Vec<AlertEvent> {
+            self.sent.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait]
+    impl AlertSink for RecordingSink {
+        async fn send_alert(
+            &self,
+            _url: &str,
+            event: &AlertEvent,
+        ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            self.sent.lock().unwrap().push(event.clone());
+            Ok(())
+        }
+        async fn send_service_alert(
+            &self,
+            _url: &str,
+            _event: &ServiceAlertEvent,
+        ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            Ok(())
+        }
+    }
+
+    /// A sink that always fails, to check failures don't mark a rule as fired.
+    struct FailingSink;
+
+    #[async_trait]
+    impl AlertSink for FailingSink {
+        async fn send_alert(
+            &self,
+            _url: &str,
+            _event: &AlertEvent,
+        ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            Err("webhook down".into())
+        }
+        async fn send_service_alert(
+            &self,
+            _url: &str,
+            _event: &ServiceAlertEvent,
+        ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            Err("webhook down".into())
+        }
+    }
+
+    fn metric_rule(name: &str, metric: AlertMetric, threshold: f64, cooldown: u64) -> AlertRule {
+        AlertRule {
+            name: name.to_string(),
+            metric,
+            condition: AlertCondition::Above,
+            threshold,
+            webhook_url: "https://example/hook".to_string(),
+            cooldown_seconds: cooldown,
+        }
+    }
+
+    /// A snapshot with one disk, one temperature and one external metric.
+    fn snapshot() -> Host {
+        Host::new("nas".to_string())
+            .with_metrics(
+                100,
+                LoadAverage::new(9.0, 1.0, 1.0),
+                CpuMetrics::new(95.0, 0.0, 0.0),
+                MemoryMetrics::new(900, 1000, 100),
+            )
+            .with_disks(vec![Disk::new(
+                "/dev/sda".to_string(),
+                "/".to_string(),
+                "ext4".to_string(),
+                1000,
+                910,
+                90,
+            )])
+            .with_temperatures(vec![Temperature::new(
+                "Package id 0".to_string(),
+                TemperatureSource::Cpu,
+                92.0,
+            )])
+            .with_external(vec![ExternalMetric {
+                job: "app".to_string(),
+                name: "queue_depth".to_string(),
+                value: 1500.0,
+            }])
+    }
+
+    #[tokio::test]
+    async fn every_metric_kind_can_fire() {
+        let cases = vec![
+            ("cpu", AlertMetric::CpuUsage, 90.0),
+            ("mem", AlertMetric::MemoryUsage, 80.0),
+            ("load", AlertMetric::LoadAverage1m, 8.0),
+            (
+                "disk",
+                AlertMetric::DiskUsage {
+                    mount_point: "/".to_string(),
+                },
+                90.0,
+            ),
+            (
+                "temp",
+                AlertMetric::Temperature {
+                    label: "Package id 0".to_string(),
+                },
+                85.0,
+            ),
+            (
+                "external",
+                AlertMetric::External {
+                    name: "queue_depth".to_string(),
+                },
+                1000.0,
+            ),
+        ];
+
+        for (name, metric, threshold) in cases {
+            let sink = Arc::new(RecordingSink::default());
+            let evaluator = AlertEvaluator::new(
+                vec![metric_rule(name, metric, threshold, 0)],
+                vec![],
+                sink.clone(),
+            );
+            evaluator.evaluate(&snapshot()).await;
+
+            let events = sink.events();
+            assert_eq!(events.len(), 1, "rule '{name}' should have fired");
+            assert_eq!(events[0].rule_name, name);
+            assert_eq!(events[0].hostname, "nas");
+            assert!(events[0].current_value > threshold);
+        }
+    }
+
+    #[tokio::test]
+    async fn metrics_that_cannot_be_resolved_are_skipped() {
+        let sink = Arc::new(RecordingSink::default());
+        let evaluator = AlertEvaluator::new(
+            vec![
+                metric_rule(
+                    "unknown disk",
+                    AlertMetric::DiskUsage {
+                        mount_point: "/nope".to_string(),
+                    },
+                    0.0,
+                    0,
+                ),
+                metric_rule(
+                    "unknown sensor",
+                    AlertMetric::Temperature {
+                        label: "nope".to_string(),
+                    },
+                    0.0,
+                    0,
+                ),
+                metric_rule(
+                    "unknown external",
+                    AlertMetric::External {
+                        name: "nope".to_string(),
+                    },
+                    0.0,
+                    0,
+                ),
+            ],
+            vec![],
+            sink.clone(),
+        );
+
+        evaluator.evaluate(&snapshot()).await;
+        assert!(sink.events().is_empty());
+    }
+
+    #[tokio::test]
+    async fn memory_usage_is_skipped_when_total_is_unknown() {
+        let sink = Arc::new(RecordingSink::default());
+        let evaluator = AlertEvaluator::new(
+            vec![metric_rule("mem", AlertMetric::MemoryUsage, 0.0, 0)],
+            vec![],
+            sink.clone(),
+        );
+
+        // A snapshot collected before memory was readable: total is zero.
+        evaluator.evaluate(&Host::new("nas".to_string())).await;
+        assert!(sink.events().is_empty());
+    }
+
+    #[tokio::test]
+    async fn values_below_the_threshold_do_not_fire() {
+        let sink = Arc::new(RecordingSink::default());
+        let evaluator = AlertEvaluator::new(
+            vec![metric_rule("cpu", AlertMetric::CpuUsage, 99.0, 0)],
+            vec![],
+            sink.clone(),
+        );
+
+        evaluator.evaluate(&snapshot()).await; // cpu is 95%
+        assert!(sink.events().is_empty());
+    }
+
+    #[tokio::test]
+    async fn cooldown_suppresses_repeat_numeric_alerts() {
+        let sink = Arc::new(RecordingSink::default());
+        let evaluator = AlertEvaluator::new(
+            vec![metric_rule("cpu", AlertMetric::CpuUsage, 90.0, 300)],
+            vec![],
+            sink.clone(),
+        );
+
+        evaluator.evaluate(&snapshot()).await;
+        evaluator.evaluate(&snapshot()).await;
+        assert_eq!(sink.events().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_failed_send_does_not_start_the_cooldown() {
+        let evaluator = AlertEvaluator::new(
+            vec![metric_rule("cpu", AlertMetric::CpuUsage, 90.0, 3600)],
+            vec![],
+            Arc::new(FailingSink),
+        );
+
+        // Both attempts run: a webhook outage must not silence the next cycle.
+        evaluator.evaluate(&snapshot()).await;
+        evaluator.evaluate(&snapshot()).await;
+    }
+
+    #[test]
+    fn has_rules_covers_both_rule_kinds() {
+        let sink = Arc::new(NoopSink);
+        assert!(!AlertEvaluator::new(vec![], vec![], sink.clone()).has_rules());
+        assert!(AlertEvaluator::new(
+            vec![metric_rule("cpu", AlertMetric::CpuUsage, 1.0, 0)],
+            vec![],
+            sink.clone()
+        )
+        .has_rules());
+        assert!(AlertEvaluator::new(vec![], vec![rule(0)], sink).has_rules());
     }
 
     fn rule(cooldown: u64) -> ServiceAlertRule {

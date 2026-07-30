@@ -48,5 +48,5 @@ jobs:
         run: >-
           cargo llvm-cov
           --ignore-filename-regex '(main\.rs|interface/|ports/)'
-          --fail-under-lines 60
+          --fail-under-lines 80
           --summary-only

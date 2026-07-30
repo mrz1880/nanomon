@@ -100,21 +100,23 @@ Interface (HTTP API + Web UI)
 4. **Cloning**: Prefer `Arc` for shared ownership over `Clone` on large structs
 5. **Traits**: Prefer `async_trait` over manual `Pin<Box<Future>>` for readability
 
-## Testing Strategy (Future)
+## Testing Strategy
 
-### Current state (MVP)
-- No tests yet (pragmatic choice for speed)
-- Code is structured to be testable
-
-### Planned for v0.2
-1. **Unit tests**: Domain layer (pure logic)
-2. **Integration tests**: Adapters with fixtures (fake `/proc` files)
-3. **E2E tests**: HTTP API with in-memory adapters
+### Current state
+- ~150 unit tests living in `#[cfg(test)]` modules next to the code
+- Domain layer, procfs parsers/adapters, store and application services covered
+  (~86% line coverage of the business logic; see **Quality tooling** below)
+- Still missing: HTTP end-to-end tests, and the Docker adapter (needs a daemon)
 
 ### How to test adapters
-- Create `tests/fixtures/proc/` with snapshots of real `/proc` files
-- Mock `ProcfsConfig` to point to fixture directory
-- Example: `tests/fixtures/proc/stat`, `tests/fixtures/proc/1234/status`, etc.
+- **procfs**: build a fake tree under `std::env::temp_dir()` and point
+  `ProcfsConfig` at it. The `FakeProc` / `FakeFs` helpers in
+  `adapters/procfs/{process,system}.rs` do this; no fixtures are committed, so
+  there is nothing to keep in sync with a real machine.
+- **Ports**: implement the trait with a mock struct (see the mocks in
+  `application/monitoring.rs`) rather than reaching for a mocking crate.
+- **Next**: HTTP tests driving an in-memory `axum::Router`, which would bring
+  `interface/` into the coverage gate.
 
 ## Performance Targets
 
@@ -336,7 +338,7 @@ never lower one without discussing it.
 
 | Metric | Current | Gate | Target |
 |--------|---------|------|--------|
-| Line coverage (business logic) | ~64% | `COV_MIN` = 60 | 75-80% |
+| Line coverage (business logic) | ~86% | `COV_MIN` = 80 | reached |
 | Mutation score (killed / viable) | ~69% | `MUTATION_MIN` = 65 | 75% |
 
 - **Coverage** (`cargo-llvm-cov`): `make coverage` (summary + threshold) or
@@ -353,12 +355,18 @@ Don't chase 100% on either: mutants inside I/O functions (whose body can be
 replaced by `Ok(())` / `vec![]`, e.g. `scrape()`, `send_alert()`, the collector
 loops) are unkillable without integration tests.
 
-**Highest-value gaps**, in order of return: (1) `adapters/procfs/{process,system}.rs`
-are at 0% and are pure parsing — use the `tests/fixtures/proc/` plan below;
-(2) `config.rs` env parsing; (3) `collector.rs` rate/merge logic with mocked
-sources; (4) HTTP integration tests against an in-memory `axum::Router`, which
-would bring `interface/` into scope. The domain layer is now fully covered with
-zero surviving mutants.
+The domain layer, the procfs parsers/adapters, the store and the application
+services are covered. **Remaining gaps**, in order of return: (1) `collector.rs`
+(~15%) — the two-speed loops need mocked sources plus time control;
+(2) `config.rs` (~34%) — `from_env` mutates process-global state, so it needs
+serialized tests; (3) `adapters/docker/client.rs` (0%) — bollard I/O, only
+reachable with a real daemon; (4) HTTP integration tests against an in-memory
+`axum::Router`, which would bring `interface/` into scope.
+
+**Testing the procfs adapters**: build a throwaway tree under
+`std::env::temp_dir()` and point `ProcfsConfig` at it (see the `FakeProc` /
+`FakeFs` helpers in `adapters/procfs/{process,system}.rs`) — no fixtures are
+checked into the repo.
 
 ### Code review checklist
 - [ ] No `unwrap()` or `expect()` in production code (use `?` or handle gracefully)

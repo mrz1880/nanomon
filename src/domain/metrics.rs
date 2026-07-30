@@ -154,7 +154,73 @@ impl LoadAverage {
 
 #[cfg(test)]
 mod tests {
-    use super::NetworkMetrics;
+    use super::{CpuMetrics, IoMetrics, LoadAverage, MemoryMetrics, NetworkMetrics};
+
+    #[test]
+    fn cpu_metrics_iowait_is_host_only() {
+        let cpu = CpuMetrics::new(30.0, 20.0, 10.0);
+        assert_eq!(cpu.usage_percent, 30.0);
+        assert_eq!(cpu.user_percent, 20.0);
+        assert_eq!(cpu.system_percent, 10.0);
+        assert!(cpu.iowait_percent.is_none());
+
+        let cpu = cpu.with_iowait(2.5);
+        assert_eq!(cpu.iowait_percent, Some(2.5));
+    }
+
+    #[test]
+    fn memory_usage_percent_is_used_over_total() {
+        assert_eq!(MemoryMetrics::new(512, 1024, 512).usage_percent(), 50.0);
+        assert_eq!(MemoryMetrics::new(0, 1024, 1024).usage_percent(), 0.0);
+    }
+
+    #[test]
+    fn memory_usage_percent_guards_zero_total() {
+        let percent = MemoryMetrics::new(0, 0, 0).usage_percent();
+        assert_eq!(percent, 0.0);
+        assert!(percent.is_finite());
+    }
+
+    #[test]
+    fn memory_optional_fields_are_host_only() {
+        let mem = MemoryMetrics::new(1, 2, 1);
+        assert!(mem.cached_bytes.is_none());
+        assert!(mem.swap_used_bytes.is_none());
+
+        let mem = mem.with_cache(64).with_swap(32);
+        assert_eq!(mem.cached_bytes, Some(64));
+        assert_eq!(mem.swap_used_bytes, Some(32));
+    }
+
+    #[test]
+    fn zero_constructors_start_at_zero() {
+        let io = IoMetrics::zero();
+        assert_eq!(io.read_bytes, 0);
+        assert_eq!(io.write_bytes, 0);
+
+        let io = IoMetrics::new(10, 20);
+        assert_eq!(io.read_bytes, 10);
+        assert_eq!(io.write_bytes, 20);
+
+        let load = LoadAverage::zero();
+        assert_eq!(load.one, 0.0);
+        assert_eq!(load.five, 0.0);
+        assert_eq!(load.fifteen, 0.0);
+
+        let net = NetworkMetrics::zero();
+        assert_eq!(net.rx_bytes, 0);
+        assert_eq!(net.tx_bytes, 0);
+        assert_eq!(net.rx_errors, 0);
+        assert_eq!(net.tx_errors, 0);
+    }
+
+    #[test]
+    fn load_average_keeps_each_window() {
+        let load = LoadAverage::new(1.5, 2.5, 3.5);
+        assert_eq!(load.one, 1.5);
+        assert_eq!(load.five, 2.5);
+        assert_eq!(load.fifteen, 3.5);
+    }
 
     #[test]
     fn network_rates_default_to_none_and_are_omitted_from_json() {

@@ -155,3 +155,120 @@ impl Stack {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Container, ContainerId, ContainerState, Stack};
+    use crate::domain::{
+        CpuMetrics, IoMetrics, MemoryMetrics, MonitoredResource, NetworkMetrics, ResourceType,
+    };
+    use chrono::Utc;
+
+    fn container(name: &str, state: ContainerState, cpu: f64, mem: u64) -> Container {
+        Container::new(
+            ContainerId::new(name),
+            name.to_string(),
+            "img:latest".to_string(),
+            state,
+            Utc::now(),
+        )
+        .with_metrics(
+            CpuMetrics::new(cpu, 0.0, 0.0),
+            MemoryMetrics::new(mem, 0, 0),
+            NetworkMetrics::zero(),
+            IoMetrics::zero(),
+        )
+    }
+
+    #[test]
+    fn container_id_roundtrips_from_str_and_string() {
+        assert_eq!(ContainerId::new("abc").as_str(), "abc");
+        assert_eq!(ContainerId::from("def").as_str(), "def");
+        assert_eq!(ContainerId::from("ghi".to_string()).as_str(), "ghi");
+    }
+
+    #[test]
+    fn only_running_state_is_running() {
+        assert!(ContainerState::Running.is_running());
+        for state in [
+            ContainerState::Stopped,
+            ContainerState::Paused,
+            ContainerState::Restarting,
+            ContainerState::Dead,
+            ContainerState::Created,
+        ] {
+            assert!(!state.is_running(), "{state:?} must not count as running");
+        }
+    }
+
+    #[test]
+    fn new_container_has_no_stack_and_zero_metrics() {
+        let c = Container::new(
+            ContainerId::new("id"),
+            "web".to_string(),
+            "nginx".to_string(),
+            ContainerState::Running,
+            Utc::now(),
+        );
+        assert!(c.stack.is_none());
+        assert_eq!(c.cpu.usage_percent, 0.0);
+        assert_eq!(c.memory.used_bytes, 0);
+        assert_eq!(c.network.rx_bytes, 0);
+        assert_eq!(c.block_io.read_bytes, 0);
+    }
+
+    #[test]
+    fn with_stack_and_with_metrics_set_fields() {
+        let c = container("web", ContainerState::Running, 12.0, 4096)
+            .with_stack(Some("mystack".to_string()));
+        assert_eq!(c.stack.as_deref(), Some("mystack"));
+        assert_eq!(c.cpu.usage_percent, 12.0);
+        assert_eq!(c.memory.used_bytes, 4096);
+
+        assert!(container("x", ContainerState::Running, 0.0, 0)
+            .with_stack(None)
+            .stack
+            .is_none());
+    }
+
+    #[test]
+    fn monitored_resource_reflects_container_state() {
+        let running = container("web", ContainerState::Running, 5.0, 2048);
+        assert_eq!(running.resource_type(), ResourceType::Container);
+        assert_eq!(running.name(), "web");
+        assert_eq!(running.cpu_percent(), Some(5.0));
+        assert_eq!(running.memory_bytes(), Some(2048));
+        assert!(running.is_healthy());
+
+        // Anything not running is unhealthy.
+        assert!(!container("web", ContainerState::Stopped, 0.0, 0).is_healthy());
+        assert!(!container("web", ContainerState::Dead, 0.0, 0).is_healthy());
+    }
+
+    #[test]
+    fn stack_aggregates_totals_and_running_count() {
+        let containers = vec![
+            container("a", ContainerState::Running, 10.0, 100),
+            container("b", ContainerState::Running, 5.5, 200),
+            container("c", ContainerState::Stopped, 0.0, 50),
+        ];
+
+        let stack = Stack::from_containers("mystack".to_string(), &containers);
+
+        assert_eq!(stack.name, "mystack");
+        assert_eq!(stack.containers_total, 3);
+        assert_eq!(stack.containers_running, 2);
+        assert_eq!(stack.cpu_percent, 15.5);
+        // Stopped containers still contribute their reported memory.
+        assert_eq!(stack.memory_bytes, 350);
+    }
+
+    #[test]
+    fn stack_from_no_containers_is_all_zero() {
+        let stack = Stack::from_containers("empty".to_string(), &[]);
+        assert_eq!(stack.containers_total, 0);
+        assert_eq!(stack.containers_running, 0);
+        assert_eq!(stack.cpu_percent, 0.0);
+        assert_eq!(stack.memory_bytes, 0);
+    }
+}

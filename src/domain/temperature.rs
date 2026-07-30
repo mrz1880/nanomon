@@ -52,3 +52,61 @@ pub enum TemperatureSource {
     Disk,
     Other,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Temperature, TemperatureSource};
+
+    fn temp(current: f64) -> Temperature {
+        Temperature::new("Package id 0".to_string(), TemperatureSource::Cpu, current)
+    }
+
+    #[test]
+    fn new_has_no_thresholds() {
+        let t = temp(50.0);
+        assert_eq!(t.label, "Package id 0");
+        assert_eq!(t.current_celsius, 50.0);
+        assert!(t.high_celsius.is_none());
+        assert!(t.critical_celsius.is_none());
+    }
+
+    #[test]
+    fn without_thresholds_nothing_is_high_or_critical() {
+        // A blazing reading still reports false when no threshold is known.
+        let t = temp(120.0);
+        assert!(!t.is_high());
+        assert!(!t.is_critical());
+    }
+
+    #[test]
+    fn thresholds_are_inclusive() {
+        let t = temp(80.0).with_thresholds(Some(80.0), Some(90.0));
+        assert!(t.is_high()); // equal to the high threshold counts
+        assert!(!t.is_critical());
+
+        let t = temp(90.0).with_thresholds(Some(80.0), Some(90.0));
+        assert!(t.is_high());
+        assert!(t.is_critical());
+    }
+
+    #[test]
+    fn below_thresholds_is_neither() {
+        let t = temp(79.9).with_thresholds(Some(80.0), Some(90.0));
+        assert!(!t.is_high());
+        assert!(!t.is_critical());
+    }
+
+    #[test]
+    fn thresholds_are_independent() {
+        // Only a critical threshold set: high stays false.
+        let t = temp(95.0).with_thresholds(None, Some(90.0));
+        assert!(!t.is_high());
+        assert!(t.is_critical());
+    }
+
+    #[test]
+    fn source_serializes_lowercase() {
+        let json = serde_json::to_string(&TemperatureSource::Disk).unwrap();
+        assert_eq!(json, "\"disk\"");
+    }
+}

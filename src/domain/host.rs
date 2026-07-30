@@ -138,3 +138,135 @@ impl MonitoredResource for Host {
         true
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Host;
+    use crate::domain::{
+        CpuMetrics, Disk, ExternalMetric, LoadAverage, MemoryMetrics, MonitoredResource,
+        NetworkInterface, NetworkMetrics, Process, ProcessState, ResourceType, ServiceState,
+        SystemdService, Temperature, TemperatureSource,
+    };
+    use chrono::{TimeZone, Utc};
+
+    fn iface(name: &str, rx: u64, tx: u64) -> NetworkInterface {
+        NetworkInterface::new(name.to_string(), true, NetworkMetrics::new(rx, tx, 0, 0))
+    }
+
+    #[test]
+    fn new_starts_empty() {
+        let host = Host::new("nas".to_string());
+        assert_eq!(host.hostname, "nas");
+        assert_eq!(host.uptime_seconds, 0);
+        assert_eq!(host.cpu.usage_percent, 0.0);
+        assert!(host.network_interfaces.is_empty());
+        assert!(host.disks.is_empty());
+        assert!(host.containers.is_empty());
+        assert!(host.processes.is_empty());
+        assert!(host.temperatures.is_empty());
+        assert!(host.services.is_empty());
+        assert!(host.external.is_empty());
+    }
+
+    #[test]
+    fn with_metrics_sets_uptime_load_cpu_and_memory() {
+        let host = Host::new("nas".to_string()).with_metrics(
+            3600,
+            LoadAverage::new(1.0, 2.0, 3.0),
+            CpuMetrics::new(25.0, 10.0, 15.0),
+            MemoryMetrics::new(512, 1024, 512),
+        );
+
+        assert_eq!(host.uptime_seconds, 3600);
+        assert_eq!(host.load_average.one, 1.0);
+        assert_eq!(host.load_average.five, 2.0);
+        assert_eq!(host.load_average.fifteen, 3.0);
+        assert_eq!(host.cpu.usage_percent, 25.0);
+        assert_eq!(host.memory.total_bytes, 1024);
+    }
+
+    #[test]
+    fn builders_attach_each_collection() {
+        let host = Host::new("nas".to_string())
+            .with_network_interfaces(vec![iface("eth0", 1, 2)])
+            .with_disks(vec![Disk::new(
+                "/dev/sda".to_string(),
+                "/".to_string(),
+                "ext4".to_string(),
+                100,
+                50,
+                50,
+            )])
+            .with_processes(vec![Process::new(
+                1,
+                0,
+                "root".to_string(),
+                "init".to_string(),
+                ProcessState::Running,
+            )])
+            .with_temperatures(vec![Temperature::new(
+                "cpu".to_string(),
+                TemperatureSource::Cpu,
+                50.0,
+            )])
+            .with_services(vec![SystemdService::new(
+                "nginx".to_string(),
+                String::new(),
+                ServiceState::Active,
+                "running".to_string(),
+            )])
+            .with_external(vec![ExternalMetric {
+                job: "app".to_string(),
+                name: "queue".to_string(),
+                value: 3.0,
+            }]);
+
+        assert_eq!(host.network_interfaces.len(), 1);
+        assert_eq!(host.disks.len(), 1);
+        assert_eq!(host.processes.len(), 1);
+        assert_eq!(host.temperatures.len(), 1);
+        assert_eq!(host.services.len(), 1);
+        assert_eq!(host.external.len(), 1);
+        assert_eq!(host.external[0].name, "queue");
+    }
+
+    #[test]
+    fn with_timestamp_overrides_creation_time() {
+        let when = Utc.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap();
+        let host = Host::new("nas".to_string()).with_timestamp(when);
+        assert_eq!(host.timestamp, when);
+    }
+
+    #[test]
+    fn network_totals_sum_across_interfaces() {
+        let host = Host::new("nas".to_string())
+            .with_network_interfaces(vec![iface("eth0", 100, 10), iface("eth1", 5, 1)]);
+
+        assert_eq!(host.total_network_rx_bytes(), 105);
+        assert_eq!(host.total_network_tx_bytes(), 11);
+    }
+
+    #[test]
+    fn network_totals_are_zero_without_interfaces() {
+        let host = Host::new("nas".to_string());
+        assert_eq!(host.total_network_rx_bytes(), 0);
+        assert_eq!(host.total_network_tx_bytes(), 0);
+    }
+
+    #[test]
+    fn monitored_resource_exposes_host_metrics() {
+        let host = Host::new("nas".to_string()).with_metrics(
+            1,
+            LoadAverage::zero(),
+            CpuMetrics::new(42.0, 0.0, 0.0),
+            MemoryMetrics::new(700, 1000, 300),
+        );
+
+        assert_eq!(host.resource_type(), ResourceType::Host);
+        assert_eq!(host.name(), "nas");
+        assert_eq!(host.cpu_percent(), Some(42.0));
+        assert_eq!(host.memory_bytes(), Some(700));
+        // A reachable host is always reported healthy.
+        assert!(host.is_healthy());
+    }
+}

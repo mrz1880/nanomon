@@ -43,10 +43,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
       # Fails if business-logic line coverage drops below the threshold.
-      # Keep the ignore regex and threshold in sync with the Makefile.
+      # Keep the ignore regex and threshold in sync with the Makefile (COV_MIN).
       - name: Coverage (fail under threshold)
         run: >-
           cargo llvm-cov
           --ignore-filename-regex '(main\.rs|interface/|ports/)'
-          --fail-under-lines 35
+          --fail-under-lines 60
           --summary-only

@@ -3,10 +3,12 @@
 # Files excluded from the coverage gate: the entrypoint, the HTTP interface and
 # port trait definitions are integration-test territory, not unit-tested.
 COV_IGNORE := (main\.rs|interface/|ports/)
-# Minimum line coverage of the business logic. Ratchet up as tests are added.
-COV_MIN := 35
-# Minimum mutation score (killed / viable mutants). Ratchet up as tests improve.
-MUTATION_MIN := 25
+# Quality ratchets: set just below the current values so normal fluctuation does
+# not turn CI red. Raise them as tests are added; never lower without discussion.
+# Minimum line coverage of the business logic (currently ~64%).
+COV_MIN := 60
+# Minimum mutation score, killed / viable mutants (currently ~69%).
+MUTATION_MIN := 65
 
 .PHONY: fmt lint test coverage coverage-html mutants check
 

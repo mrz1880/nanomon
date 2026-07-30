@@ -321,7 +321,7 @@ setInterval(fetchDashboard, 10000);
 1. Run `cargo fmt` (format)
 2. Run `cargo clippy -- -D warnings` (lints)
 3. Run `cargo test` (unit tests)
-4. Run `make coverage` (line coverage of business logic must stay ≥ `COV_MIN`, default 35%)
+4. Run `make coverage` (line coverage of business logic must stay ≥ `COV_MIN`, default 60%)
 5. Ensure binary size < 10 MB: `ls -lh target/release/nanomon`
 6. Test in Docker: `docker compose up --build`
 
@@ -329,17 +329,36 @@ setInterval(fetchDashboard, 10000);
 coverage threshold (`.github/workflows/ci.yml`).
 
 ### Quality tooling
+
+Both gates are **ratchets**, set just below the current value: they exist to
+stop regressions, not to describe ambition. Raise them when tests are added;
+never lower one without discussing it.
+
+| Metric | Current | Gate | Target |
+|--------|---------|------|--------|
+| Line coverage (business logic) | ~64% | `COV_MIN` = 60 | 75-80% |
+| Mutation score (killed / viable) | ~69% | `MUTATION_MIN` = 65 | 75% |
+
 - **Coverage** (`cargo-llvm-cov`): `make coverage` (summary + threshold) or
   `make coverage-html` (browsable report). The gate ignores `main.rs`, the HTTP
-  `interface/` and port trait defs (`ports/`) — integration-test territory.
-  Ratchet `COV_MIN` in the `Makefile` up as tests are added.
+  `interface/` and port trait defs (`ports/`) — integration-test territory, so
+  the percentage is stricter than a repo-wide number would be.
 - **Mutation testing** (`cargo-mutants`): `make mutants`. Scope is business
   logic only (`.cargo/mutants.toml` excludes I/O adapters, interface, main).
-  `scripts/mutation-score.sh` computes the mutation score (killed / viable) and
-  fails below `MUTATION_MIN` (default 25%; ratchet up as tests improve). Runs
-  weekly + on demand in CI (`.github/workflows/mutants.yml`). Surviving mutants
-  flag weak assertions to strengthen — a fast win is unit-testing the domain
-  value objects (`process`, `host`, `disk`, `temperature`…), still mostly at 0%.
+  `scripts/mutation-score.sh` computes killed / viable and fails below
+  `MUTATION_MIN`. Runs weekly + on demand in CI
+  (`.github/workflows/mutants.yml`).
+
+Don't chase 100% on either: mutants inside I/O functions (whose body can be
+replaced by `Ok(())` / `vec![]`, e.g. `scrape()`, `send_alert()`, the collector
+loops) are unkillable without integration tests.
+
+**Highest-value gaps**, in order of return: (1) `adapters/procfs/{process,system}.rs`
+are at 0% and are pure parsing — use the `tests/fixtures/proc/` plan below;
+(2) `config.rs` env parsing; (3) `collector.rs` rate/merge logic with mocked
+sources; (4) HTTP integration tests against an in-memory `axum::Router`, which
+would bring `interface/` into scope. The domain layer is now fully covered with
+zero surviving mutants.
 
 ### Code review checklist
 - [ ] No `unwrap()` or `expect()` in production code (use `?` or handle gracefully)

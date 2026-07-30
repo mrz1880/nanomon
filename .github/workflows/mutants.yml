@@ -23,7 +23,8 @@ jobs:
       - uses: taiki-e/install-action@cargo-mutants
       - name: Run mutation testing (gated on score)
         env:
-          MUTATION_MIN_SCORE: "25"
+          # Keep in sync with the Makefile (MUTATION_MIN).
+          MUTATION_MIN_SCORE: "65"
         run: bash scripts/mutation-score.sh --no-shuffle -j 2
       - name: Upload results
         if: always()

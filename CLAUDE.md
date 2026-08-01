@@ -10,11 +10,6 @@
 
 ### Hexagonal Architecture (Ports & Adapters)
 
-The project follows a strict hexagonal architecture to ensure:
-- **Testability**: Business logic independent of I/O
-- **Maintainability**: Clear boundaries between layers
-- **Flexibility**: Easy to swap adapters (e.g., mock Docker for tests)
-
 ```
 Domain (entities, value objects)
   ↓
@@ -84,13 +79,8 @@ Interface (HTTP API + Web UI)
 
 ## Code Style Guidelines
 
-### From user's global CLAUDE.md
-
-1. **No `any`**: Forbidden. Always type explicitly.
-2. **Readonly fields**: If assigned only in constructor, mark `readonly` (N/A in Rust, but use `pub` fields sparingly)
-3. **Optional chaining**: Prefer `Option` and `?` over explicit `match` when appropriate
-4. **Design patterns**: GoF patterns are welcome but pragmatically (avoid over-engineering)
-5. **Composition over inheritance**: Rust enforces this via traits
+Language-wide Rust rules live in `~/.claude/rules/rust.md`, imported at the bottom of this file.
+Only what is specific to NanoMon is listed here.
 
 ### Rust-specific additions
 
@@ -99,6 +89,23 @@ Interface (HTTP API + Web UI)
 3. **Lifetimes**: Avoid `'static` unless necessary (e.g., Arc<T>)
 4. **Cloning**: Prefer `Arc` for shared ownership over `Clone` on large structs
 5. **Traits**: Prefer `async_trait` over manual `Pin<Box<Future>>` for readability
+
+### HTTP layer (Axum)
+
+1. **Handler errors**: `AppError` and its `IntoResponse` impl exist in `interface/http/handlers.rs`,
+   but no handler uses them yet — 10 handlers still build
+   `(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()` inline. That duplicates the
+   mapping and returns the raw internal error to the client. New handlers return
+   `Result<_, AppError>`; convert an existing one whenever you touch it.
+2. **Shared state**: handlers receive `MonitoringService` through the router state. No global
+   mutable state, no lazy statics.
+3. **Cross-cutting concerns** (request tracing, timeouts, compression) belong in `tower` layers in
+   `interface/http/routes.rs`, not repeated per handler. Only `CorsLayer::permissive()` is wired
+   today — which is another reason not to expose port 3000 publicly.
+4. **Blocking work**: procfs reads are small and stay inline in the async path. Anything that can
+   block for more than a few milliseconds (SMART, D-Bus, external HTTP scrape) goes to
+   `tokio::task::spawn_blocking` or a background task: the collector shares the reactor with the
+   API, and the CPU budget is < 1%.
 
 ## Testing Strategy
 
@@ -373,11 +380,12 @@ reachable with a real daemon; (4) HTTP integration tests against an in-memory
 checked into the repo.
 
 ### Code review checklist
-- [ ] No `unwrap()` or `expect()` in production code (use `?` or handle gracefully)
-- [ ] All public APIs documented with `///` comments
-- [ ] No panics in adapters (return `Result`)
-- [ ] Errors logged with `tracing::error!` before returning
-- [ ] Optional fields use `Option<T>`, required fields are non-optional
+
+The language-wide items (no `unwrap()`, doc comments, `Option` over sentinels, `tracing::error!`)
+come from `~/.claude/rules/rust.md`. Specific to NanoMon:
+
+- [ ] No panic can escape an adapter — a failing source must not take the collector loop down
+- [ ] The binary stays under 10 MB and the RAM/CPU budget of the Performance Targets table holds
 
 ## Contact & Resources
 
@@ -389,3 +397,7 @@ checked into the repo.
 ---
 
 **Last updated**: 2026-01-07 (MVP v0.1 complete)
+
+## Shared rules
+
+@~/.claude/rules/rust.md

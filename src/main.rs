@@ -11,8 +11,8 @@ use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use adapters::{
-    DockerAdapter, FsDirectoryUsage, HttpScrapeSource, MemoryStore, ProcfsAdapter, ProcfsConfig,
-    ScrapeTarget, SystemctlAdapter, WebhookSink,
+    DockerAdapter, FsDirectoryUsage, HttpScrapeSource, MemoryStore, NoContainers, ProcfsAdapter,
+    ProcfsConfig, ScrapeTarget, SystemctlAdapter, WebhookSink,
 };
 use application::{AlertEvaluator, Collector, DirectoryUsageService, MonitoringService};
 use config::Config;
@@ -46,11 +46,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             Arc::new(adapter) as Arc<dyn ports::ContainerSource>
         }
         Err(e) => {
+            // Not fatal: a seedbox or a VPS has no Docker daemon and never
+            // will. Refusing to start there would cost the operator CPU,
+            // memory, disks, network and systemd services over the one source
+            // that happens to be absent — and the log line already said
+            // container monitoring was disabled, so failing anyway contradicted
+            // it.
             warn!(
                 "Failed to connect to Docker: {}. Container monitoring disabled.",
                 e
             );
-            return Err(e);
+            Arc::new(NoContainers) as Arc<dyn ports::ContainerSource>
         }
     };
 

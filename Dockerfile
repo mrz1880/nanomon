@@ -35,11 +35,8 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy binary from builder
+# Copy binary from builder (the dashboard assets are embedded in it)
 COPY --from=builder /build/target/release/nanomon /app/nanomon
-
-# Copy static files
-COPY src/interface/web/static ./src/interface/web/static
 
 # Set environment variables
 ENV NANOMON_PORT=3000

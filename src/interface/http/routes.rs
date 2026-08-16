@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
 use axum::{routing::get, Router};
-use tower_http::{cors::CorsLayer, services::ServeDir};
+use tower_http::cors::CorsLayer;
 
 use crate::application::{Collector, DirectoryUsageService, MonitoringService};
 
+use super::assets::asset_handler;
 use super::handlers::{
     container_detail_handler, containers_handler, dashboard_handler, directories_handler,
     disks_handler, external_handler, health_handler, history_handler, host_handler,
@@ -43,9 +44,9 @@ pub fn create_router(
         .route("/api/external", get(external_handler))
         // Prometheus metrics
         .route("/metrics", get(prometheus_handler))
-        // Serve static files
-        .nest_service("/static", ServeDir::new("src/interface/web/static"))
-        .fallback_service(ServeDir::new("src/interface/web/static"))
+        // Dashboard assets, served from the binary (no working directory needed)
+        .route("/static/{*path}", get(asset_handler))
+        .fallback(get(asset_handler))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }

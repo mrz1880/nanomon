@@ -48,13 +48,19 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # The sha tag is split in two: {{branch}} is only set for branch
+          # pushes, so on tag pushes and pull requests it expands to nothing,
+          # leaving a bare "-" prefix and an invalid tag ("...:-a1b2c3d") that
+          # fails the build outright. Those refs fall back to the default
+          # "sha-" prefix instead.
           tags: |
             type=ref,event=branch
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            type=sha,prefix={{branch}}-
+            type=sha,prefix={{branch}}-,enable=${{ startsWith(github.ref, 'refs/heads/') }}
+            type=sha,enable=${{ !startsWith(github.ref, 'refs/heads/') }}
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push Docker image

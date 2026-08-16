@@ -40,10 +40,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let procfs_config = ProcfsConfig::new(config.proc_path.clone(), config.sys_path.clone());
     let procfs_adapter = ProcfsAdapter::new(procfs_config);
 
-    let docker_adapter = match DockerAdapter::new() {
+    let (docker_adapter, docker_available) = match DockerAdapter::new() {
         Ok(adapter) => {
             info!("Connected to Docker daemon");
-            Arc::new(adapter) as Arc<dyn ports::ContainerSource>
+            (Arc::new(adapter) as Arc<dyn ports::ContainerSource>, true)
         }
         Err(e) => {
             // Not fatal: a seedbox or a VPS has no Docker daemon and never
@@ -56,7 +56,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 "Failed to connect to Docker: {}. Container monitoring disabled.",
                 e
             );
-            Arc::new(NoContainers) as Arc<dyn ports::ContainerSource>
+            (
+                Arc::new(NoContainers) as Arc<dyn ports::ContainerSource>,
+                false,
+            )
         }
     };
 
@@ -85,7 +88,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // see, at a glance, what a reduced-privilege deployment can and cannot read.
     let procfs_ok = std::fs::metadata(config.proc_path.join("stat")).is_ok();
     info!("Source self-check:");
-    info!("  docker: connected");
+    info!(
+        "  docker: {}",
+        if docker_available {
+            "connected"
+        } else {
+            "unavailable (container monitoring disabled)"
+        }
+    );
     info!(
         "  procfs ({}): {}",
         config.proc_path.display(),

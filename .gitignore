@@ -23,5 +23,11 @@ Thumbs.db
 .env
 .env.local
 
+# Local alert rules. `alerts.example.toml` is the versioned template and stays
+# tracked; a real `alerts.toml` carries webhook URLs (ntfy topic, Slack hook)
+# that act as bearer secrets and must never be published.
+alerts.toml
+alerts.local.toml
+
 # Docker
 .dockerignore

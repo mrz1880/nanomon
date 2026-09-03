@@ -24,6 +24,8 @@ pub struct Config {
     pub proc_path: PathBuf,
     pub sys_path: PathBuf,
     pub log_level: String,
+    /// Host name to report, since a container cannot discover its host's.
+    pub hostname: Option<String>,
     pub enable_systemd: bool,
     pub service_filter: Vec<String>,
     pub watch_dirs: Vec<PathBuf>,
@@ -74,6 +76,9 @@ impl Config {
                 .map(PathBuf::from)
                 .unwrap_or_else(|_| PathBuf::from("/sys")),
             log_level: env::var("NANOMON_LOG_LEVEL").unwrap_or_else(|_| "info".to_string()),
+            hostname: env::var("NANOMON_HOSTNAME")
+                .ok()
+                .filter(|h| !h.trim().is_empty()),
             enable_systemd: env::var("NANOMON_ENABLE_SYSTEMD")
                 .map(|s| s == "true" || s == "1")
                 .unwrap_or(false),

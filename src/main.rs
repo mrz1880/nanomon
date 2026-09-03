@@ -37,7 +37,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("Configuration: {:?}", config);
 
     // Initialize adapters
-    let procfs_config = ProcfsConfig::new(config.proc_path.clone(), config.sys_path.clone());
+    let procfs_config = ProcfsConfig::new(config.proc_path.clone(), config.sys_path.clone())
+        .with_hostname(config.hostname.clone());
     let procfs_adapter = ProcfsAdapter::new(procfs_config);
 
     let (docker_adapter, docker_available) = match DockerAdapter::new() {

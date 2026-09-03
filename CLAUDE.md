@@ -180,6 +180,7 @@ Only what is specific to NanoMon is listed here.
 | `NANOMON_SCRAPE_URLS` | *(none)* | HttpScrapeSource | Comma-separated `job=url` external metric targets (Prometheus text / JSON) |
 | `NANOMON_PROC_PATH` | `/proc` | ProcfsAdapter | Path to procfs (use `/host/proc` in Docker) |
 | `NANOMON_SYS_PATH` | `/sys` | ProcfsAdapter | Path to sysfs (use `/host/sys` in Docker) |
+| `NANOMON_HOSTNAME` | *(detected)* | ProcfsAdapter | Host name to report. A container cannot discover its host's: `/etc/hostname` is its own and `/proc/sys/kernel/hostname` is namespaced, so alerts otherwise carry the container ID |
 | `NANOMON_LOG_LEVEL` | `info` | tracing | Log verbosity (trace/debug/info/warn/error) |
 
 ## Docker Deployment Notes
@@ -197,6 +198,27 @@ Without `pid: host`, the container sees only its own processes. With it, `/proc`
 - `pid: host` exposes all PIDs (risk: information disclosure)
 - Use `read_only: true` + `tmpfs` to mitigate
 - **Do not expose port 3000 publicly** (no auth in MVP)
+
+## Alerting behaviour
+
+A numeric rule notifies **once** when the value crosses its threshold and once
+more when it comes back, staying silent in between however long the incident
+lasts. Before this, a rule re-fired on every cooldown while breached, so a
+single event produced dozens of identical notifications with no way to tell
+when it ended.
+
+- **Hysteresis**: the incident only closes once the value clears the threshold
+  by a margin (5% of the threshold by default), so a value sitting on the limit
+  cannot alternate between firing and resolved.
+- **Severity** (`info` / `warning` / `critical`) drives the ntfy priority and
+  tag, so a full disk does not arrive looking like a load spike. A resolution is
+  always sent quietly.
+- **A failed send does not close the incident**: `notified` stays false and the
+  next cycle retries, so a webhook outage cannot silence an alert.
+- Notification bodies carry the metric's business label and unit, the incident
+  duration on resolution, and the level the hardware itself warns at when the
+  sensor publishes one (`/sys/class/hwmon`). Pick thresholds against that number
+  rather than a round one.
 
 ## Known Limitations (MVP)
 

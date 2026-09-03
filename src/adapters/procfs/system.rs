@@ -31,6 +31,9 @@ impl ProcfsSystemSource {
     }
 
     fn get_hostname(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        if let Some(configured) = &self.config.hostname {
+            return Ok(configured.clone());
+        }
         let content = self.read_file("/etc/hostname")?;
         Ok(content.trim().to_string())
     }
@@ -423,6 +426,23 @@ mod tests {
         assert_eq!(info.uptime_seconds, 12345);
         // Hostname comes from the real /etc/hostname, falling back gracefully.
         assert!(!info.hostname.is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_explicit_hostname_wins_over_the_detected_one() {
+        let fake = FakeFs::new("hostname");
+        // A container cannot discover the host name: /etc/hostname is its own
+        // and /proc/sys/kernel/hostname is namespaced, so it must be told.
+        let source = ProcfsSystemSource::new(
+            ProcfsConfig::new(fake.root.join("proc"), fake.root.join("sys"))
+                .with_hostname(Some("mrznaz".to_string())),
+        );
+
+        let info = source.get_host_info().await.unwrap();
+
+        assert_eq!(info.hostname, "mrznaz");
+        // The rest of the reading is untouched.
+        assert_eq!(info.uptime_seconds, 12345);
     }
 
     #[tokio::test]

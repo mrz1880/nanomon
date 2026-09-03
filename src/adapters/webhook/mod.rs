@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 
-use crate::domain::{AlertEvent, ServiceAlertEvent};
+use crate::domain::{AlertEvent, AlertKind, ServiceAlertEvent, Severity};
 use crate::ports::AlertSink;
 
 /// Sends alert events to a webhook URL.
@@ -30,13 +30,77 @@ fn is_ntfy(url: &str) -> bool {
     url.contains("ntfy")
 }
 
-/// (title, body) notification text for a numeric alert.
-fn format_alert(event: &AlertEvent) -> (String, String) {
-    let body = format!(
-        "{} = {:.1} (threshold: {} {:.1})\nhost: {}",
-        event.metric, event.current_value, event.condition, event.threshold, event.hostname
-    );
-    (event.rule_name.clone(), body)
+/// A notification ready to be posted to ntfy.
+struct Notification {
+    title: String,
+    body: String,
+    /// ntfy tag, rendered as an emoji in the client.
+    tags: &'static str,
+    priority: &'static str,
+}
+
+/// Build the ntfy notification for a numeric alert.
+///
+/// A resolution is deliberately quiet: it closes an incident the operator has
+/// already been told about, so it must not buzz like a new one.
+fn notification_for(event: &AlertEvent) -> Notification {
+    let (tags, priority) = match (event.kind, event.severity) {
+        (AlertKind::Resolved, _) => ("white_check_mark", "low"),
+        (AlertKind::Firing, Severity::Critical) => ("rotating_light", "urgent"),
+        (AlertKind::Firing, Severity::Warning) => ("warning", "high"),
+        (AlertKind::Firing, Severity::Info) => ("information_source", "default"),
+    };
+
+    let title = match event.kind {
+        AlertKind::Firing => event.rule_name.clone(),
+        AlertKind::Resolved => format!("Resolved: {}", event.rule_name),
+    };
+
+    Notification {
+        title,
+        body: format_alert(event),
+        tags,
+        priority,
+    }
+}
+
+/// Render a duration the way an operator would say it out loud.
+fn format_duration(seconds: u64) -> String {
+    match seconds {
+        s if s < 60 => format!("{s}s"),
+        s if s < 3600 => format!("{}m", s / 60),
+        s => format!("{}h {}m", s / 3600, (s % 3600) / 60),
+    }
+}
+
+/// Notification body for a numeric alert.
+///
+/// Reads as a sentence: what the value is, what it was compared against, and
+/// the context needed to judge it without opening the dashboard.
+fn format_alert(event: &AlertEvent) -> String {
+    let unit = &event.unit;
+    let mut body = match event.kind {
+        AlertKind::Firing => format!(
+            "{} is {:.1}{unit} ({} {:.1}{unit})",
+            event.metric,
+            event.current_value,
+            event.condition.to_lowercase(),
+            event.threshold,
+        ),
+        AlertKind::Resolved => format!(
+            "{} is back to {:.1}{unit} (threshold {:.1}{unit})",
+            event.metric, event.current_value, event.threshold,
+        ),
+    };
+
+    if let Some(warn_at) = event.warn_at {
+        body.push_str(&format!("\nhardware warns at {warn_at:.1}{unit}"));
+    }
+    if let Some(seconds) = event.breached_for_seconds {
+        body.push_str(&format!("\nlasted {}", format_duration(seconds)));
+    }
+    body.push_str(&format!("\nhost {}", event.hostname));
+    body
 }
 
 /// (title, body) notification text for a systemd service alert.
@@ -56,13 +120,13 @@ impl AlertSink for WebhookSink {
         event: &AlertEvent,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let response = if is_ntfy(url) {
-            let (title, body) = format_alert(event);
+            let notification = notification_for(event);
             self.client
                 .post(url)
-                .header("Title", title)
-                .header("Tags", "warning")
-                .header("Priority", "high")
-                .body(body)
+                .header("Title", notification.title)
+                .header("Tags", notification.tags)
+                .header("Priority", notification.priority)
+                .body(notification.body)
                 .send()
                 .await?
         } else {
@@ -117,8 +181,8 @@ impl AlertSink for WebhookSink {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_alert, format_service_alert, is_ntfy};
-    use crate::domain::{AlertEvent, ServiceAlertEvent};
+    use super::{format_alert, format_duration, format_service_alert, is_ntfy, notification_for};
+    use crate::domain::{AlertEvent, AlertKind, ServiceAlertEvent, Severity};
 
     #[test]
     fn detects_ntfy_urls() {
@@ -127,22 +191,96 @@ mod tests {
         assert!(!is_ntfy("https://hooks.slack.com/services/x"));
     }
 
-    #[test]
-    fn formats_numeric_alert() {
-        let event = AlertEvent {
+    fn event(kind: AlertKind, severity: Severity) -> AlertEvent {
+        AlertEvent {
+            kind,
+            severity,
             rule_name: "Disk almost full".to_string(),
-            metric: "DiskUsage { mount_point: \"/\" }".to_string(),
+            metric: "Disk usage /volume1".to_string(),
+            unit: "%".to_string(),
             current_value: 86.3456,
             threshold: 85.0,
             condition: "Above".to_string(),
             hostname: "nas".to_string(),
-            timestamp: "2026-07-26T00:00:00Z".to_string(),
-        };
-        let (title, body) = format_alert(&event);
-        assert_eq!(title, "Disk almost full");
-        assert!(body.contains("= 86.3"));
-        assert!(body.contains("threshold: Above 85.0"));
-        assert!(body.contains("host: nas"));
+            timestamp: "2026-09-04T00:00:00Z".to_string(),
+            breached_for_seconds: None,
+            warn_at: None,
+        }
+    }
+
+    #[test]
+    fn severity_drives_how_loudly_the_breach_arrives() {
+        let critical = notification_for(&event(AlertKind::Firing, Severity::Critical));
+        assert_eq!(critical.priority, "urgent");
+        assert_eq!(critical.tags, "rotating_light");
+
+        let warning = notification_for(&event(AlertKind::Firing, Severity::Warning));
+        assert_eq!(warning.priority, "high");
+        assert_eq!(warning.tags, "warning");
+
+        let info = notification_for(&event(AlertKind::Firing, Severity::Info));
+        assert_eq!(info.priority, "default");
+        assert_eq!(info.tags, "information_source");
+    }
+
+    #[test]
+    fn a_resolution_arrives_quietly_whatever_the_severity() {
+        let n = notification_for(&event(AlertKind::Resolved, Severity::Critical));
+
+        assert_eq!(n.priority, "low");
+        assert_eq!(n.tags, "white_check_mark");
+        // The title must say it is over without hunting through the body.
+        assert_eq!(n.title, "Resolved: Disk almost full");
+    }
+
+    #[test]
+    fn a_breach_keeps_the_rule_name_as_title() {
+        let n = notification_for(&event(AlertKind::Firing, Severity::Warning));
+        assert_eq!(n.title, "Disk almost full");
+    }
+
+    #[test]
+    fn the_body_states_the_value_with_its_unit_and_the_threshold() {
+        let body = format_alert(&event(AlertKind::Firing, Severity::Warning));
+
+        assert!(body.contains("Disk usage /volume1 is 86.3%"), "{body}");
+        assert!(body.contains("above 85.0%"), "{body}");
+        assert!(body.contains("host nas"), "{body}");
+    }
+
+    #[test]
+    fn the_body_mentions_the_hardware_limit_when_the_sensor_publishes_one() {
+        let mut e = event(AlertKind::Firing, Severity::Warning);
+        e.metric = "Temperature Package id 0".to_string();
+        e.unit = "C".to_string();
+        e.current_value = 92.0;
+        e.threshold = 90.0;
+        e.warn_at = Some(100.0);
+
+        let body = format_alert(&e);
+
+        // Without this line 92 C looks alarming; with it, it plainly is not.
+        assert!(body.contains("hardware warns at 100.0C"), "{body}");
+    }
+
+    #[test]
+    fn a_resolution_says_how_long_the_incident_lasted() {
+        let mut e = event(AlertKind::Resolved, Severity::Warning);
+        e.current_value = 40.0;
+        e.breached_for_seconds = Some(11_520); // 3h 12m
+
+        let body = format_alert(&e);
+
+        assert!(body.contains("back to 40.0%"), "{body}");
+        assert!(body.contains("lasted 3h 12m"), "{body}");
+    }
+
+    #[test]
+    fn durations_read_naturally_at_every_scale() {
+        assert_eq!(format_duration(45), "45s");
+        assert_eq!(format_duration(600), "10m");
+        assert_eq!(format_duration(3600), "1h 0m");
+        assert_eq!(format_duration(11_520), "3h 12m");
     }
 
     #[test]

@@ -12,6 +12,12 @@ pub use system::ProcfsSystemSource;
 pub struct ProcfsConfig {
     pub proc_path: PathBuf,
     pub sys_path: PathBuf,
+    /// Host name to report instead of the one detected locally.
+    ///
+    /// A container cannot discover its host's name: `/etc/hostname` is its own
+    /// and `/proc/sys/kernel/hostname` is namespaced even with `/proc` bind
+    /// mounted, so the value has to be supplied.
+    pub hostname: Option<String>,
 }
 
 impl ProcfsConfig {
@@ -19,13 +25,21 @@ impl ProcfsConfig {
         Self {
             proc_path: proc_path.into(),
             sys_path: sys_path.into(),
+            hostname: None,
         }
+    }
+
+    /// Report `hostname` instead of the locally detected one.
+    pub fn with_hostname(mut self, hostname: Option<String>) -> Self {
+        self.hostname = hostname;
+        self
     }
 
     pub fn host() -> Self {
         Self {
             proc_path: PathBuf::from("/proc"),
             sys_path: PathBuf::from("/sys"),
+            hostname: None,
         }
     }
 }

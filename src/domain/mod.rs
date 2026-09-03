@@ -11,7 +11,10 @@ pub mod resource;
 pub mod service;
 pub mod temperature;
 
-pub use alert::{AlertEvent, AlertMetric, AlertRule, ServiceAlertEvent, ServiceAlertRule};
+pub use alert::{
+    AlertEvent, AlertKind, AlertMetric, AlertRule, MetricReading, ServiceAlertEvent,
+    ServiceAlertRule, Severity,
+};
 pub use container::{Container, ContainerId, ContainerState, Stack};
 pub use directory::{DirectoryEntry, DirectoryUsage};
 pub use disk::Disk;

@@ -1,5 +1,16 @@
 # NanoMon Alert Configuration Example
 # Copy this file and set NANOMON_ALERT_CONFIG=/path/to/alerts.toml
+#
+# A rule notifies once when the value crosses the threshold, and once more when
+# it comes back. It stays silent in between, however long the incident lasts.
+#
+# Optional per rule:
+#   severity   info | warning (default) | critical
+#              Drives the notification priority, so a full disk does not arrive
+#              looking like a transient load spike.
+#   hysteresis Margin the value must clear before the incident is declared over.
+#              Defaults to 5% of the threshold, which stops a value sitting on
+#              the limit from alternating between firing and resolved.
 
 [[rules]]
 name = "High CPU"
@@ -8,6 +19,7 @@ condition = "above"
 threshold = 90.0
 webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
 cooldown_seconds = 300
+severity = "warning"
 
 [[rules]]
 name = "High Memory"
@@ -24,6 +36,7 @@ condition = "above"
 threshold = 90.0
 webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
 cooldown_seconds = 600
+severity = "critical"
 
 [[rules]]
 name = "High Load"
@@ -34,12 +47,16 @@ webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
 cooldown_seconds = 300
 
 [[rules]]
+# Check the level the sensor itself reports as high (/sys/class/hwmon) before
+# picking a number: alerting well under the hardware limit only creates noise.
 name = "CPU Overheating"
 metric = { temperature = { label = "Package id 0" } }
 condition = "above"
-threshold = 85.0
+threshold = 90.0
 webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
 cooldown_seconds = 60
+severity = "critical"
+hysteresis = 5.0
 
 # Alert on a metric ingested from NANOMON_SCRAPE_URLS (matched by its name).
 [[rules]]

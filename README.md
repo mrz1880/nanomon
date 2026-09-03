@@ -118,6 +118,8 @@ Customize NanoMon via environment variables:
 | `DOCKER_HOST` | `unix:///var/run/docker.sock` | Docker socket path |
 | `NANOMON_PROC_PATH` | `/proc` | Path to procfs (use `/host/proc` in Docker) |
 | `NANOMON_SYS_PATH` | `/sys` | Path to sysfs (use `/host/sys` in Docker) |
+| `NANOMON_HOSTNAME` | *(detected)* | Name of the monitored machine. Set it in Docker: a container cannot discover its host's name, so alerts otherwise carry the container ID |
+| `NANOMON_ALERT_CONFIG` | *(none)* | Path to the alert rules file (see `alerts.example.toml`) |
 | `NANOMON_WATCH_DIRS` | *(none)* | Comma-separated dirs (e.g. `/srv,/data`); reports each dir's direct children sizes, refreshed on the poll interval |
 | `NANOMON_SCRAPE_URLS` | *(none)* | Comma-separated `job=url` targets exposing Prometheus text or flat JSON; ingested into the dashboard, `/metrics`, and alerts |
 | `NANOMON_LOG_LEVEL` | `info` | Logging verbosity (`trace`/`debug`/`info`/`warn`/`error`) |
@@ -128,6 +130,41 @@ Customize NanoMon via environment variables:
 ```bash
 NANOMON_PORT=8080 docker compose up -d
 ```
+
+### Alerting
+
+Point `NANOMON_ALERT_CONFIG` at a TOML file of rules; `alerts.example.toml`
+documents every field. A rule watches one metric and posts to a webhook
+(ntfy gets a formatted notification, anything else a JSON payload).
+
+**One notification per incident.** A rule fires when the value crosses its
+threshold, stays quiet for as long as the breach lasts, and sends a resolution
+once the value has cleared the threshold by a margin (`hysteresis`, 5% of the
+threshold by default) so a value resting on the limit cannot oscillate. A
+failed send is retried on the next cycle rather than silently dropped.
+
+```toml
+[[rules]]
+name = "Disk Almost Full"
+metric = { disk_usage = { mount_point = "/" } }
+condition = "above"
+threshold = 90.0
+webhook_url = "https://ntfy.sh/your-topic"
+severity = "critical"   # info | warning (default) | critical, drives the ntfy priority
+```
+
+Notifications name the metric in plain language with its unit, the duration of
+the incident when it resolves, and the level the hardware itself warns at when
+the sensor publishes one:
+
+```
+Disk usage / is 91.4% (above 90.0%)
+host nas-ugreen
+```
+
+Pick thresholds against the limits the sensors report (`/sys/class/hwmon`)
+rather than round numbers: a temperature rule set well under the hardware's own
+warning level only produces noise.
 
 ## 🔐 Privileges & Graceful Degradation
 

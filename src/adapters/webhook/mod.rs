@@ -112,6 +112,37 @@ fn format_service_alert(event: &ServiceAlertEvent) -> (String, String) {
     (event.rule_name.clone(), body)
 }
 
+/// A webhook that answered, but rejected the notification.
+#[derive(Debug, thiserror::Error)]
+#[error("webhook rejected '{rule_name}' with status {status}")]
+struct WebhookRejected {
+    status: reqwest::StatusCode,
+    rule_name: String,
+}
+
+/// Whether the POST actually delivered the notification.
+///
+/// A non-2xx answer means nobody was notified, most often a wrong topic in the
+/// URL. Reporting it as a success would let the evaluator mark the incident
+/// announced and go quiet for its whole duration, so it has to surface as an
+/// error: the caller then leaves the incident un-notified and retries.
+///
+/// # Arguments
+/// * `status` - HTTP status the webhook answered with.
+/// * `rule_name` - Rule being announced, for the error message.
+///
+/// # Errors
+/// Returns [`WebhookRejected`] when `status` is not a success status.
+fn delivery_outcome(status: reqwest::StatusCode, rule_name: &str) -> Result<(), WebhookRejected> {
+    if status.is_success() {
+        return Ok(());
+    }
+    Err(WebhookRejected {
+        status,
+        rule_name: rule_name.to_string(),
+    })
+}
+
 #[async_trait]
 impl AlertSink for WebhookSink {
     async fn send_alert(
@@ -133,15 +164,8 @@ impl AlertSink for WebhookSink {
             self.client.post(url).json(event).send().await?
         };
 
-        if !response.status().is_success() {
-            tracing::warn!(
-                "Webhook returned status {} for alert '{}'",
-                response.status(),
-                event.rule_name
-            );
-        } else {
-            tracing::info!("Alert '{}' sent to webhook", event.rule_name);
-        }
+        delivery_outcome(response.status(), &event.rule_name)?;
+        tracing::info!("Alert '{}' sent to webhook", event.rule_name);
 
         Ok(())
     }
@@ -165,15 +189,8 @@ impl AlertSink for WebhookSink {
             self.client.post(url).json(event).send().await?
         };
 
-        if !response.status().is_success() {
-            tracing::warn!(
-                "Webhook returned status {} for service alert '{}'",
-                response.status(),
-                event.rule_name
-            );
-        } else {
-            tracing::info!("Service alert '{}' sent to webhook", event.rule_name);
-        }
+        delivery_outcome(response.status(), &event.rule_name)?;
+        tracing::info!("Service alert '{}' sent to webhook", event.rule_name);
 
         Ok(())
     }
@@ -181,8 +198,12 @@ impl AlertSink for WebhookSink {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_alert, format_duration, format_service_alert, is_ntfy, notification_for};
+    use super::{
+        delivery_outcome, format_alert, format_duration, format_service_alert, is_ntfy,
+        notification_for,
+    };
     use crate::domain::{AlertEvent, AlertKind, ServiceAlertEvent, Severity};
+    use reqwest::StatusCode;
 
     #[test]
     fn detects_ntfy_urls() {
@@ -296,5 +317,20 @@ mod tests {
         assert_eq!(title, "nginx down");
         assert!(body.contains("unit nginx is failed"));
         assert!(body.contains("host: nas"));
+    }
+
+    #[test]
+    fn a_rejected_post_is_a_delivery_failure() {
+        // A wrong topic or a server error means nobody was notified. Reporting
+        // it as success would let the evaluator close the incident and go
+        // quiet, so the status has to surface as an error and be retried.
+        let rejected = delivery_outcome(StatusCode::NOT_FOUND, "High load average");
+        let message = rejected
+            .expect_err("a 404 must not count as delivered")
+            .to_string();
+        assert!(message.contains("404"), "{message}");
+        assert!(message.contains("High load average"), "{message}");
+
+        assert!(delivery_outcome(StatusCode::OK, "High load average").is_ok());
     }
 }

@@ -18,14 +18,9 @@ use tokio_stream::StreamExt as _;
 
 use crate::application::{Collector, DirectoryUsageService, MonitoringService};
 use crate::domain::{
-    Container, CpuMetrics, DirectoryUsage, ExternalMetric, Host, LoadAverage, MemoryMetrics,
-    Process, Stack, SystemdService, Temperature,
+    Container, CpuMetrics, DirectoryUsage, Disk, ExternalMetric, Host, LoadAverage, MemoryMetrics,
+    NetworkInterface, Process, Stack, SystemdService, Temperature,
 };
-
-// serde_json::to_value only fails on maps with non-string keys or a custom
-// Serialize impl returning an error; the domain types serialized here have
-// neither.
-const SERIALIZE_INVARIANT: &str = "domain metrics always serialize to JSON";
 
 /// Custom error type that implements IntoResponse
 #[derive(Debug)]
@@ -83,10 +78,10 @@ pub struct HostResponse {
     pub timestamp: String,
     pub hostname: String,
     pub uptime_seconds: u64,
-    pub load_average: serde_json::Value,
-    pub cpu: serde_json::Value,
-    pub memory: serde_json::Value,
-    pub network: serde_json::Value,
+    pub load_average: LoadAverage,
+    pub cpu: CpuMetrics,
+    pub memory: MemoryMetrics,
+    pub network: Vec<NetworkInterface>,
     pub temperatures: Vec<Temperature>,
 }
 
@@ -96,10 +91,10 @@ impl From<&Host> for HostResponse {
             timestamp: host.timestamp.to_rfc3339(),
             hostname: host.hostname.clone(),
             uptime_seconds: host.uptime_seconds,
-            load_average: serde_json::to_value(&host.load_average).expect(SERIALIZE_INVARIANT),
-            cpu: serde_json::to_value(&host.cpu).expect(SERIALIZE_INVARIANT),
-            memory: serde_json::to_value(&host.memory).expect(SERIALIZE_INVARIANT),
-            network: serde_json::to_value(&host.network_interfaces).expect(SERIALIZE_INVARIANT),
+            load_average: host.load_average.clone(),
+            cpu: host.cpu.clone(),
+            memory: host.memory.clone(),
+            network: host.network_interfaces.clone(),
             temperatures: host.temperatures.clone(),
         }
     }
@@ -124,14 +119,14 @@ pub struct ProcessesResponse {
 #[derive(Debug, Serialize)]
 pub struct DisksResponse {
     pub timestamp: String,
-    pub disks: serde_json::Value,
+    pub disks: Vec<Disk>,
 }
 
 /// Response for /api/network
 #[derive(Debug, Serialize)]
 pub struct NetworkResponse {
     pub timestamp: String,
-    pub interfaces: serde_json::Value,
+    pub interfaces: Vec<NetworkInterface>,
 }
 
 /// Response for /api/dashboard (aggregated)
@@ -141,8 +136,8 @@ pub struct DashboardResponse {
     pub containers: Vec<Container>,
     pub stacks: Vec<Stack>,
     pub processes: Vec<Process>,
-    pub disks: serde_json::Value,
-    pub network: serde_json::Value,
+    pub disks: Vec<Disk>,
+    pub network: Vec<NetworkInterface>,
 }
 
 /// Response for /api/history
@@ -376,7 +371,7 @@ pub async fn disks_handler(State(state): State<AppState>) -> Response {
             StatusCode::OK,
             Json(DisksResponse {
                 timestamp: host.timestamp.to_rfc3339(),
-                disks: serde_json::to_value(&host.disks).expect(SERIALIZE_INVARIANT),
+                disks: host.disks,
             }),
         )
             .into_response(),
@@ -414,8 +409,7 @@ pub async fn network_handler(State(state): State<AppState>) -> Response {
             StatusCode::OK,
             Json(NetworkResponse {
                 timestamp: host.timestamp.to_rfc3339(),
-                interfaces: serde_json::to_value(&host.network_interfaces)
-                    .expect(SERIALIZE_INVARIANT),
+                interfaces: host.network_interfaces,
             }),
         )
             .into_response(),
@@ -450,8 +444,8 @@ pub async fn dashboard_handler(State(state): State<AppState>) -> Response {
             containers: host.containers.clone(),
             stacks,
             processes,
-            disks: serde_json::to_value(&host.disks).expect(SERIALIZE_INVARIANT),
-            network: serde_json::to_value(&host.network_interfaces).expect(SERIALIZE_INVARIANT),
+            disks: host.disks,
+            network: host.network_interfaces,
         }),
     )
         .into_response()

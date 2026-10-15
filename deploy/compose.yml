@@ -1,0 +1,43 @@
+# Production compose for the NAS (fait autorite, cf. nas-stacks/stacks.yml).
+# The root docker-compose.yml is for local development only.
+# Ship it (the NAS has no sftp subsystem, so no scp):
+#   ssh nas-ugreen "cat > /volume1/docker/stacks/nanomon/compose.yml" < deploy/compose.yml
+#   ssh nas-ugreen "cd /volume1/docker/stacks/nanomon && docker compose up -d"
+services:
+  nanomon:
+    image: ghcr.io/mrz1880/nanomon:latest
+    container_name: nanomon
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /volume1/docker/stacks/nanomon/alerts.toml:/etc/nanomon/alerts.toml:ro
+    environment:
+      NANOMON_PORT: "3000"
+      NANOMON_POLL_INTERVAL: "10"
+      NANOMON_HISTORY_SIZE: "360"
+      NANOMON_PROCESS_LIMIT: "20"
+      NANOMON_PROC_PATH: /host/proc
+      NANOMON_SYS_PATH: /host/sys
+      NANOMON_HOSTNAME: mrznaz
+      NANOMON_LOG_LEVEL: info
+      NANOMON_ENABLE_SYSTEMD: "true"
+      NANOMON_ALERT_CONFIG: /etc/nanomon/alerts.toml
+      TZ: Europe/Paris
+    pid: host
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+    labels:
+      - com.centurylinklabs.watchtower.enable=true

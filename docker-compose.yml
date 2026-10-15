@@ -1,3 +1,4 @@
+# Local development only. Production lives in deploy/compose.yml.
 services:
   nanomon:
     build: .

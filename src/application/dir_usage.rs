@@ -3,6 +3,11 @@ use std::sync::{Arc, RwLock};
 use crate::domain::DirectoryUsage;
 use crate::ports::DirectoryUsageSource;
 
+// A std lock is "poisoned" when a thread panics while holding its guard;
+// every later lock() then returns Err. The critical sections below only
+// read or swap plain data and never panic, so poisoning cannot happen.
+const LOCK_INVARIANT: &str = "directory usage cache lock poisoned: no code panics while holding it";
+
 /// Caches directory-usage results so the (expensive) filesystem walk runs on a
 /// schedule, never per HTTP request. Empty and inert when no source is set.
 pub struct DirectoryUsageService {
@@ -27,13 +32,13 @@ impl DirectoryUsageService {
     pub async fn refresh(&self) {
         if let Some(source) = &self.source {
             let usage = source.directory_usage().await;
-            *self.cache.write().unwrap() = usage;
+            *self.cache.write().expect(LOCK_INVARIANT) = usage;
         }
     }
 
     /// Current cached usage (clone).
     pub fn snapshot(&self) -> Vec<DirectoryUsage> {
-        self.cache.read().unwrap().clone()
+        self.cache.read().expect(LOCK_INVARIANT).clone()
     }
 }
 

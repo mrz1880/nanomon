@@ -12,6 +12,11 @@ use crate::ports::{ExternalMetricSource, MetricStore};
 
 use super::{AlertEvaluator, MonitoringService};
 
+// A std lock is "poisoned" when a thread panics while holding its guard;
+// every later lock() then returns Err. The critical sections below only
+// read or swap plain data and never panic, so poisoning cannot happen.
+const LOCK_INVARIANT: &str = "network sample lock poisoned: no code panics while holding it";
+
 /// Snapshot of cumulative network counters, used to derive throughput rates.
 struct NetSample {
     at: DateTime<Utc>,
@@ -169,7 +174,7 @@ impl Collector {
     /// fast sample, then record the current counters for the next tick.
     fn apply_network_rates(&self, host: &mut Host) {
         let now = host.timestamp;
-        let mut guard = self.net_prev.lock().unwrap();
+        let mut guard = self.net_prev.lock().expect(LOCK_INVARIANT);
 
         if let Some(prev) = guard.as_ref() {
             let dt = (now - prev.at).num_milliseconds() as f64 / 1000.0;

@@ -22,6 +22,11 @@ use crate::domain::{
     Process, Stack, SystemdService, Temperature,
 };
 
+// serde_json::to_value only fails on maps with non-string keys or a custom
+// Serialize impl returning an error; the domain types serialized here have
+// neither.
+const SERIALIZE_INVARIANT: &str = "domain metrics always serialize to JSON";
+
 /// Custom error type that implements IntoResponse
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -91,10 +96,10 @@ impl From<&Host> for HostResponse {
             timestamp: host.timestamp.to_rfc3339(),
             hostname: host.hostname.clone(),
             uptime_seconds: host.uptime_seconds,
-            load_average: serde_json::to_value(&host.load_average).unwrap(),
-            cpu: serde_json::to_value(&host.cpu).unwrap(),
-            memory: serde_json::to_value(&host.memory).unwrap(),
-            network: serde_json::to_value(&host.network_interfaces).unwrap(),
+            load_average: serde_json::to_value(&host.load_average).expect(SERIALIZE_INVARIANT),
+            cpu: serde_json::to_value(&host.cpu).expect(SERIALIZE_INVARIANT),
+            memory: serde_json::to_value(&host.memory).expect(SERIALIZE_INVARIANT),
+            network: serde_json::to_value(&host.network_interfaces).expect(SERIALIZE_INVARIANT),
             temperatures: host.temperatures.clone(),
         }
     }
@@ -371,7 +376,7 @@ pub async fn disks_handler(State(state): State<AppState>) -> Response {
             StatusCode::OK,
             Json(DisksResponse {
                 timestamp: host.timestamp.to_rfc3339(),
-                disks: serde_json::to_value(&host.disks).unwrap(),
+                disks: serde_json::to_value(&host.disks).expect(SERIALIZE_INVARIANT),
             }),
         )
             .into_response(),
@@ -409,7 +414,8 @@ pub async fn network_handler(State(state): State<AppState>) -> Response {
             StatusCode::OK,
             Json(NetworkResponse {
                 timestamp: host.timestamp.to_rfc3339(),
-                interfaces: serde_json::to_value(&host.network_interfaces).unwrap(),
+                interfaces: serde_json::to_value(&host.network_interfaces)
+                    .expect(SERIALIZE_INVARIANT),
             }),
         )
             .into_response(),
@@ -444,8 +450,8 @@ pub async fn dashboard_handler(State(state): State<AppState>) -> Response {
             containers: host.containers.clone(),
             stacks,
             processes,
-            disks: serde_json::to_value(&host.disks).unwrap(),
-            network: serde_json::to_value(&host.network_interfaces).unwrap(),
+            disks: serde_json::to_value(&host.disks).expect(SERIALIZE_INVARIANT),
+            network: serde_json::to_value(&host.network_interfaces).expect(SERIALIZE_INVARIANT),
         }),
     )
         .into_response()

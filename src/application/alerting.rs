@@ -9,6 +9,11 @@ use crate::domain::{
 };
 use crate::ports::AlertSink;
 
+// A std lock is "poisoned" when a thread panics while holding its guard;
+// every later lock() then returns Err. The critical sections below only
+// read or swap plain data and never panic, so poisoning cannot happen.
+const LOCK_INVARIANT: &str = "alert state lock poisoned: no code panics while holding it";
+
 /// What the evaluator remembers about a breaching numeric rule between cycles.
 struct BreachState {
     /// When the value first crossed the threshold, for the incident duration.
@@ -57,7 +62,7 @@ impl AlertEvaluator {
             let current_value = reading.value;
 
             let was_breaching = {
-                let breaches = self.breaches.read().unwrap();
+                let breaches = self.breaches.read().expect(LOCK_INVARIANT);
                 breaches.get(&rule.name).map(|b| b.notified)
             };
 
@@ -72,7 +77,7 @@ impl AlertEvaluator {
                     let since = self
                         .breaches
                         .write()
-                        .unwrap()
+                        .expect(LOCK_INVARIANT)
                         .remove(&rule.name)
                         .map(|b| b.since);
                     if notified {
@@ -94,7 +99,7 @@ impl AlertEvaluator {
             // Remember when the breach started, without overwriting an earlier
             // start left by a send that failed.
             {
-                let mut breaches = self.breaches.write().unwrap();
+                let mut breaches = self.breaches.write().expect(LOCK_INVARIANT);
                 breaches.entry(rule.name.clone()).or_insert(BreachState {
                     since: Utc::now(),
                     notified: false,
@@ -103,7 +108,7 @@ impl AlertEvaluator {
 
             // Check cooldown
             {
-                let last_fired = self.last_fired.read().unwrap();
+                let last_fired = self.last_fired.read().expect(LOCK_INVARIANT);
                 if let Some(last) = last_fired.get(&rule.name) {
                     let elapsed = Utc::now().signed_duration_since(*last);
                     if elapsed.num_seconds() < rule.cooldown_seconds as i64 {
@@ -119,9 +124,14 @@ impl AlertEvaluator {
             } else {
                 self.last_fired
                     .write()
-                    .unwrap()
+                    .expect(LOCK_INVARIANT)
                     .insert(rule.name.clone(), Utc::now());
-                if let Some(breach) = self.breaches.write().unwrap().get_mut(&rule.name) {
+                if let Some(breach) = self
+                    .breaches
+                    .write()
+                    .expect(LOCK_INVARIANT)
+                    .get_mut(&rule.name)
+                {
                     breach.notified = true;
                 }
             }
@@ -158,7 +168,7 @@ impl AlertEvaluator {
             let previous = self
                 .last_service_state
                 .read()
-                .unwrap()
+                .expect(LOCK_INVARIANT)
                 .get(&rule.unit)
                 .cloned();
             let was_bad = previous
@@ -169,7 +179,7 @@ impl AlertEvaluator {
             // Record the current state before deciding, for next-cycle transitions.
             self.last_service_state
                 .write()
-                .unwrap()
+                .expect(LOCK_INVARIANT)
                 .insert(rule.unit.clone(), state.clone());
 
             let transitioned_to_bad = is_bad && !was_bad;
@@ -179,7 +189,7 @@ impl AlertEvaluator {
 
             // Cooldown guard: suppress rapid re-fires (flapping) per rule.
             {
-                let last_fired = self.last_fired.read().unwrap();
+                let last_fired = self.last_fired.read().expect(LOCK_INVARIANT);
                 if let Some(last) = last_fired.get(&rule.name) {
                     let elapsed = Utc::now().signed_duration_since(*last).num_seconds();
                     if elapsed < rule.cooldown_seconds as i64 {
@@ -189,7 +199,7 @@ impl AlertEvaluator {
             }
             self.last_fired
                 .write()
-                .unwrap()
+                .expect(LOCK_INVARIANT)
                 .insert(rule.name.clone(), Utc::now());
 
             fired.push((

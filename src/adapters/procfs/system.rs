@@ -12,6 +12,11 @@ use crate::ports::{HostInfo, SystemSource};
 use super::parser::{self, CpuStat};
 use super::ProcfsConfig;
 
+// A std lock is "poisoned" when a thread panics while holding its guard;
+// every later lock() then returns Err. The critical sections below only
+// read or swap plain data and never panic, so poisoning cannot happen.
+const LOCK_INVARIANT: &str = "last CPU stat lock poisoned: no code panics while holding it";
+
 /// System source implementation using procfs
 pub struct ProcfsSystemSource {
     config: ProcfsConfig,
@@ -93,7 +98,7 @@ impl SystemSource for ProcfsSystemSource {
         let stat_content = fs::read_to_string(&stat_path)?;
         let current_stat = parser::parse_cpu_stat(&stat_content)?;
 
-        let mut last_stat_lock = self.last_cpu_stat.lock().unwrap();
+        let mut last_stat_lock = self.last_cpu_stat.lock().expect(LOCK_INVARIANT);
         let metrics = self.calculate_cpu_metrics(&current_stat, last_stat_lock.as_ref());
         *last_stat_lock = Some(current_stat);
 

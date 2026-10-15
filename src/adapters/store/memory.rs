@@ -7,6 +7,11 @@ use chrono::Utc;
 use crate::domain::Host;
 use crate::ports::MetricStore;
 
+// A std lock is "poisoned" when a thread panics while holding its guard;
+// every later lock() then returns Err. The critical sections below only
+// read or swap plain data and never panic, so poisoning cannot happen.
+const LOCK_INVARIANT: &str = "snapshot buffer lock poisoned: no code panics while holding it";
+
 /// In-memory ring buffer store for host snapshots using Arc for shared ownership
 pub struct MemoryStore {
     snapshots: RwLock<VecDeque<Arc<Host>>>,
@@ -24,7 +29,7 @@ impl MemoryStore {
 
 impl MetricStore for MemoryStore {
     fn store(&self, snapshot: Host) {
-        let mut snapshots = self.snapshots.write().unwrap();
+        let mut snapshots = self.snapshots.write().expect(LOCK_INVARIANT);
 
         if snapshots.len() >= self.max_size {
             snapshots.pop_front();
@@ -34,11 +39,11 @@ impl MetricStore for MemoryStore {
     }
 
     fn get_latest(&self) -> Option<Arc<Host>> {
-        self.snapshots.read().unwrap().back().cloned()
+        self.snapshots.read().expect(LOCK_INVARIANT).back().cloned()
     }
 
     fn get_history(&self, duration: Duration) -> Vec<Arc<Host>> {
-        let snapshots = self.snapshots.read().unwrap();
+        let snapshots = self.snapshots.read().expect(LOCK_INVARIANT);
         let now = Utc::now();
         let cutoff = now - chrono::Duration::from_std(duration).unwrap_or_default();
 
@@ -50,7 +55,7 @@ impl MetricStore for MemoryStore {
     }
 
     fn len(&self) -> usize {
-        self.snapshots.read().unwrap().len()
+        self.snapshots.read().expect(LOCK_INVARIANT).len()
     }
 }
 

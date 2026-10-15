@@ -1,3 +1,5 @@
+#[cfg(test)]
+mod api_contract_tests;
 mod assets;
 mod handlers;
 mod routes;

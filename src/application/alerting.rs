@@ -52,7 +52,10 @@ impl AlertEvaluator {
         }
     }
 
-    /// Evaluate all rules against the current snapshot
+    /// Evaluate all rules against the current snapshot.
+    ///
+    /// Numeric rules measure time on the snapshot's own timestamp, so a breach
+    /// lasts as long as the collections that observed it.
     pub async fn evaluate(&self, snapshot: &Host) {
         for rule in &self.rules {
             let reading = match self.extract_metric(rule, snapshot) {
@@ -101,7 +104,7 @@ impl AlertEvaluator {
             {
                 let mut breaches = self.breaches.write().expect(LOCK_INVARIANT);
                 breaches.entry(rule.name.clone()).or_insert(BreachState {
-                    since: Utc::now(),
+                    since: snapshot.timestamp,
                     notified: false,
                 });
             }
@@ -110,7 +113,7 @@ impl AlertEvaluator {
             {
                 let last_fired = self.last_fired.read().expect(LOCK_INVARIANT);
                 if let Some(last) = last_fired.get(&rule.name) {
-                    let elapsed = Utc::now().signed_duration_since(*last);
+                    let elapsed = snapshot.timestamp.signed_duration_since(*last);
                     if elapsed.num_seconds() < rule.cooldown_seconds as i64 {
                         continue;
                     }
@@ -125,7 +128,7 @@ impl AlertEvaluator {
                 self.last_fired
                     .write()
                     .expect(LOCK_INVARIANT)
-                    .insert(rule.name.clone(), Utc::now());
+                    .insert(rule.name.clone(), snapshot.timestamp);
                 if let Some(breach) = self
                     .breaches
                     .write()
@@ -226,8 +229,10 @@ impl AlertEvaluator {
         snapshot: &Host,
         breached_since: Option<DateTime<Utc>>,
     ) -> AlertEvent {
-        let breached_for_seconds = breached_since
-            .map(|since| Utc::now().signed_duration_since(since).num_seconds().max(0) as u64);
+        let breached_for_seconds = breached_since.map(|since| {
+            let elapsed = snapshot.timestamp.signed_duration_since(since);
+            elapsed.num_seconds().max(0) as u64
+        });
         AlertEvent {
             kind,
             severity: rule.severity,
@@ -238,7 +243,7 @@ impl AlertEvaluator {
             threshold: rule.threshold,
             condition: format!("{:?}", rule.condition),
             hostname: snapshot.hostname.clone(),
-            timestamp: Utc::now().to_rfc3339(),
+            timestamp: snapshot.timestamp.to_rfc3339(),
             breached_for_seconds,
             warn_at: reading.warn_at,
         }

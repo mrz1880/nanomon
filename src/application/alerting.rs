@@ -64,19 +64,27 @@ impl AlertEvaluator {
             };
             let current_value = reading.value;
 
-            let was_breaching = {
+            // None: within limits. Some(notified): breaching, announced or not.
+            let breach_notified = {
                 let breaches = self.breaches.read().expect(LOCK_INVARIANT);
                 breaches.get(&rule.name).map(|b| b.notified)
             };
 
             if !rule.condition.evaluate(current_value, rule.threshold) {
-                // Only close the incident once the value has cleared the
-                // hysteresis margin: a value sitting on the threshold would
-                // otherwise alternate between firing and resolved.
+                // Only close an announced incident once the value has cleared
+                // the hysteresis margin: a value sitting on the threshold would
+                // otherwise alternate between firing and resolved. A breach
+                // nobody was told about ends at the threshold, so its required
+                // duration counts continuous time only.
                 let cleared =
                     rule.condition
                         .has_cleared(current_value, rule.threshold, rule.hysteresis());
-                if let (Some(notified), true) = (was_breaching, cleared) {
+                let ends = match breach_notified {
+                    Some(true) => cleared,
+                    Some(false) => true,
+                    None => false,
+                };
+                if let (Some(notified), true) = (breach_notified, ends) {
                     let since = self
                         .breaches
                         .write()
@@ -95,18 +103,27 @@ impl AlertEvaluator {
             }
 
             // Already announced and still breaching: one incident, one alert.
-            if was_breaching == Some(true) {
+            if breach_notified == Some(true) {
                 continue;
             }
 
             // Remember when the breach started, without overwriting an earlier
             // start left by a send that failed.
-            {
+            let since = {
                 let mut breaches = self.breaches.write().expect(LOCK_INVARIANT);
-                breaches.entry(rule.name.clone()).or_insert(BreachState {
-                    since: snapshot.timestamp,
-                    notified: false,
-                });
+                breaches
+                    .entry(rule.name.clone())
+                    .or_insert(BreachState {
+                        since: snapshot.timestamp,
+                        notified: false,
+                    })
+                    .since
+            };
+
+            // Still pending: the breach has not lasted long enough to matter.
+            let lasted = snapshot.timestamp.signed_duration_since(since);
+            if lasted.num_seconds() < rule.for_seconds as i64 {
+                continue;
             }
 
             // Check cooldown
@@ -381,6 +398,7 @@ mod tests {
             webhook_url: "https://example/hook".to_string(),
             cooldown_seconds: cooldown,
             hysteresis: None,
+            for_seconds: 0,
             severity: crate::domain::Severity::Warning,
         }
     }
@@ -570,6 +588,61 @@ mod tests {
             kinds,
             vec![AlertKind::Firing],
             "hovering around the threshold is one ongoing incident"
+        );
+    }
+
+    /// The CPU snapshot as collected `seconds` after a fixed origin.
+    fn cpu_at(seconds: i64, cpu: f64) -> Host {
+        let origin = chrono::DateTime::<chrono::Utc>::UNIX_EPOCH;
+        snapshot_with_cpu(cpu).with_timestamp(origin + chrono::Duration::seconds(seconds))
+    }
+
+    #[tokio::test]
+    async fn a_spike_shorter_than_the_required_duration_stays_silent() {
+        let sink = Arc::new(RecordingSink::default());
+        let mut rule = metric_rule("cpu", AlertMetric::CpuUsage, 90.0, 0);
+        rule.for_seconds = 60;
+        let evaluator = AlertEvaluator::new(vec![rule], vec![], sink.clone());
+
+        evaluator.evaluate(&cpu_at(0, 95.0)).await;
+        evaluator.evaluate(&cpu_at(10, 95.0)).await;
+        evaluator.evaluate(&cpu_at(20, 10.0)).await;
+
+        assert!(sink.events().is_empty(), "a 20s spike must not notify");
+    }
+
+    #[tokio::test]
+    async fn a_breach_that_lasts_the_required_duration_notifies() {
+        let sink = Arc::new(RecordingSink::default());
+        let mut rule = metric_rule("cpu", AlertMetric::CpuUsage, 90.0, 0);
+        rule.for_seconds = 60;
+        let evaluator = AlertEvaluator::new(vec![rule], vec![], sink.clone());
+
+        evaluator.evaluate(&cpu_at(0, 95.0)).await;
+        evaluator.evaluate(&cpu_at(50, 95.0)).await;
+        assert!(sink.events().is_empty(), "still pending after 50s");
+
+        evaluator.evaluate(&cpu_at(60, 95.0)).await;
+        let kinds: Vec<AlertKind> = sink.events().iter().map(|e| e.kind).collect();
+        assert_eq!(kinds, vec![AlertKind::Firing]);
+    }
+
+    #[tokio::test]
+    async fn dipping_under_the_threshold_restarts_the_required_duration() {
+        let sink = Arc::new(RecordingSink::default());
+        let mut rule = metric_rule("cpu", AlertMetric::CpuUsage, 90.0, 0);
+        rule.for_seconds = 60;
+        let evaluator = AlertEvaluator::new(vec![rule], vec![], sink.clone());
+
+        evaluator.evaluate(&cpu_at(0, 95.0)).await;
+        // Under the threshold but inside the hysteresis margin: an open
+        // incident would stay open, a pending one was never continuous.
+        evaluator.evaluate(&cpu_at(30, 89.0)).await;
+        evaluator.evaluate(&cpu_at(60, 95.0)).await;
+
+        assert!(
+            sink.events().is_empty(),
+            "two 30s breaches are not one 60s breach"
         );
     }
 

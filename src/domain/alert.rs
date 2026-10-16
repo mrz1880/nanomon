@@ -19,6 +19,13 @@ pub struct AlertRule {
     /// 12 is 0.6.
     #[serde(default)]
     pub hysteresis: Option<f64>,
+    /// How long, in seconds, the breach must last before anyone is told.
+    ///
+    /// Filters out spikes that resolve on their own, such as a deployment
+    /// briefly running two versions side by side. `0` notifies on the first
+    /// breaching collection.
+    #[serde(default)]
+    pub for_seconds: u64,
     /// How loudly the incident should be announced.
     #[serde(default)]
     pub severity: Severity,
@@ -386,6 +393,26 @@ mod tests {
         assert!(matches!(rule.condition, AlertCondition::Above));
         assert_eq!(rule.threshold, 90.0);
         assert_eq!(rule.cooldown_seconds, default_cooldown());
+    }
+
+    #[test]
+    fn a_rule_notifies_on_the_first_breach_unless_told_to_wait() {
+        let parse = |extra: &str| -> AlertRule {
+            toml::from_str(&format!(
+                r#"
+                name = "m"
+                metric = "memory_usage"
+                condition = "above"
+                threshold = 92.0
+                webhook_url = "https://example/hook"
+                {extra}
+                "#
+            ))
+            .unwrap()
+        };
+
+        assert_eq!(parse("").for_seconds, 0);
+        assert_eq!(parse("for_seconds = 60").for_seconds, 60);
     }
 
     #[test]

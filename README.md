@@ -143,6 +143,10 @@ once the value has cleared the threshold by a margin (`hysteresis`, 5% of the
 threshold by default) so a value resting on the limit cannot oscillate. A
 failed send is retried on the next cycle rather than silently dropped.
 
+**Ignore what fixes itself.** `for_seconds` holds the notification until the
+breach has lasted that long, so a few seconds of memory pressure during a
+deployment stay silent while a real leak still gets through.
+
 ```toml
 [[rules]]
 name = "Disk Almost Full"

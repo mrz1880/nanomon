@@ -11,6 +11,11 @@
 #   hysteresis Margin the value must clear before the incident is declared over.
 #              Defaults to 5% of the threshold, which stops a value sitting on
 #              the limit from alternating between firing and resolved.
+#   for_seconds
+#              How long the breach must last before notifying. Defaults to 0
+#              (notify on the first breaching collection); set it to ignore
+#              spikes that resolve on their own. Dipping under the threshold
+#              restarts the wait.
 
 [[rules]]
 name = "High CPU"
@@ -28,6 +33,7 @@ condition = "above"
 threshold = 85.0
 webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
 cooldown_seconds = 300
+for_seconds = 60
 
 [[rules]]
 name = "Disk Almost Full"

@@ -165,7 +165,11 @@ impl AlertSink for WebhookSink {
         };
 
         delivery_outcome(response.status(), &event.rule_name)?;
-        tracing::info!("Alert '{}' sent to webhook", event.rule_name);
+        tracing::info!(
+            "Alert '{}' ({}) sent to webhook",
+            event.rule_name,
+            event.kind
+        );
 
         Ok(())
     }

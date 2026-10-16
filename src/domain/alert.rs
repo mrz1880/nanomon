@@ -129,6 +129,15 @@ pub enum AlertKind {
     Resolved,
 }
 
+impl std::fmt::Display for AlertKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Firing => "firing",
+            Self::Resolved => "resolved",
+        })
+    }
+}
+
 /// An alert event fired when a rule triggers
 #[derive(Debug, Clone, Serialize)]
 pub struct AlertEvent {
@@ -201,7 +210,8 @@ pub struct ServiceAlertEvent {
 #[cfg(test)]
 mod tests {
     use super::{
-        default_cooldown, AlertCondition, AlertMetric, AlertRule, ServiceAlertRule, Severity,
+        default_cooldown, AlertCondition, AlertKind, AlertMetric, AlertRule, ServiceAlertRule,
+        Severity,
     };
     use crate::domain::ServiceState;
 
@@ -345,6 +355,12 @@ mod tests {
         assert!(c.evaluate(9.9, 10.0));
         assert!(!c.evaluate(10.0, 10.0));
         assert!(!c.evaluate(10.1, 10.0));
+    }
+
+    #[test]
+    fn an_alert_kind_reads_as_the_word_an_operator_would_use() {
+        assert_eq!(AlertKind::Firing.to_string(), "firing");
+        assert_eq!(AlertKind::Resolved.to_string(), "resolved");
     }
 
     #[test]

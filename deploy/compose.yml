@@ -20,14 +20,9 @@ services:
       - /sys:/host/sys:ro
       - /volume1/docker/stacks/nanomon/alerts.toml:/etc/nanomon/alerts.toml:ro
     environment:
-      NANOMON_PORT: "3000"
-      NANOMON_POLL_INTERVAL: "10"
-      NANOMON_HISTORY_SIZE: "360"
-      NANOMON_PROCESS_LIMIT: "20"
       NANOMON_PROC_PATH: /host/proc
       NANOMON_SYS_PATH: /host/sys
       NANOMON_HOSTNAME: mrznaz
-      NANOMON_LOG_LEVEL: info
       NANOMON_ENABLE_SYSTEMD: "true"
       NANOMON_ALERT_CONFIG: /etc/nanomon/alerts.toml
       TZ: Europe/Paris

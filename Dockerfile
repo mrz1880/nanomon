@@ -46,12 +46,8 @@ COPY --from=builder /build/target/release/nanomon /app/nanomon
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin nanomon
 USER 10001
 
-# Set environment variables
-ENV NANOMON_PORT=3000
-ENV NANOMON_POLL_INTERVAL=10
-ENV NANOMON_LOG_LEVEL=info
-
-# Expose port
+# Settings and their defaults live in src/config.rs. EXPOSE and the
+# healthcheck assume the default NANOMON_PORT.
 EXPOSE 3000
 
 # Health check

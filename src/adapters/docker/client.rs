@@ -137,9 +137,12 @@ fn stats_from_sample(stats: ContainerStatsResponse) -> ContainerStats {
         .unwrap_or_default();
     for entry in entries {
         let value = entry.value.unwrap_or(0);
-        match entry.op.as_deref() {
-            Some("Read") => read_bytes += value,
-            Some("Write") => write_bytes += value,
+        // cgroup v1 spells the op "Read", cgroup v2 "read".
+        let op = entry.op.unwrap_or_default().to_ascii_lowercase();
+        match op.as_str() {
+            "read" => read_bytes += value,
+            "write" => write_bytes += value,
+            // Other ops (sync, async, discard, total) are not traffic directions.
             _ => {}
         }
     }
@@ -302,6 +305,14 @@ mod tests {
     #[test]
     fn block_io_is_summed_across_devices_per_direction() {
         let stats = stats_from_sample(sample("Read", "Write"));
+        assert_eq!(stats.block_io.read_bytes, 1024);
+        assert_eq!(stats.block_io.write_bytes, 400);
+    }
+
+    #[test]
+    fn block_io_is_counted_with_cgroup_v2_lowercase_ops() {
+        // cgroup v1 reports "Read"/"Write", cgroup v2 hosts "read"/"write".
+        let stats = stats_from_sample(sample("read", "write"));
         assert_eq!(stats.block_io.read_bytes, 1024);
         assert_eq!(stats.block_io.write_bytes, 400);
     }

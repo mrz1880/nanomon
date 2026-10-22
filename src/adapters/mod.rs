@@ -1,3 +1,4 @@
+pub mod alertconfig;
 pub mod dirusage;
 pub mod docker;
 pub mod nodocker;

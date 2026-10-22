@@ -10,13 +10,13 @@ use std::sync::Arc;
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+use adapters::alertconfig::{load_alert_rules, AlertConfigError, AlertRules};
 use adapters::{
     DockerAdapter, FsDirectoryUsage, HttpScrapeSource, MemoryStore, NoContainers, ProcfsAdapter,
     ProcfsConfig, ScrapeTarget, SystemctlAdapter, WebhookSink,
 };
 use application::{AlertEvaluator, Collector, DirectoryUsageService, MonitoringService};
 use config::Config;
-use domain::{AlertRule, ServiceAlertRule};
 use interface::http::create_router;
 
 #[tokio::main]
@@ -116,7 +116,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     );
 
     // Load alert rules if configured
-    let alert_evaluator = load_alert_evaluator(&config);
+    let alert_evaluator = match load_alert_evaluator(&config) {
+        Ok(evaluator) => evaluator,
+        Err(e) => {
+            tracing::error!("{e}. Refusing to start with alerting silently disabled.");
+            return Err(e.into());
+        }
+    };
     if let Some(ref evaluator) = alert_evaluator {
         if evaluator.has_rules() {
             info!("Alert rules loaded");
@@ -209,35 +215,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     Ok(())
 }
 
-fn load_alert_evaluator(config: &Config) -> Option<Arc<AlertEvaluator>> {
-    let path = config.alert_config_path.as_ref()?;
-
-    let content = match std::fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(e) => {
-            warn!("Failed to read alert config at {:?}: {}", path, e);
-            return None;
-        }
+/// Builds the alert evaluator from `NANOMON_ALERT_CONFIG`, when set.
+///
+/// # Returns
+/// `None` when no config path is set or the file declares no rule.
+///
+/// # Errors
+/// Returns [`AlertConfigError`] when the configured file cannot be read or
+/// parsed. Unlike a missing Docker daemon, this is never degraded silently:
+/// the operator asked for alerts, and the webhook URLs live in that very
+/// file, so nobody could be told that alerting is off.
+fn load_alert_evaluator(config: &Config) -> Result<Option<Arc<AlertEvaluator>>, AlertConfigError> {
+    let Some(path) = config.alert_config_path.as_ref() else {
+        return Ok(None);
     };
 
-    let parsed: AlertConfig = match toml::from_str(&content) {
-        Ok(config) => config,
-        Err(e) => {
-            warn!("Failed to parse alert config: {}", e);
-            return None;
-        }
-    };
+    let AlertRules { metric, service } = load_alert_rules(path)?;
 
-    let AlertConfig {
-        rules,
-        service_rules,
-    } = parsed;
-
-    if rules.is_empty() && service_rules.is_empty() {
-        return None;
+    if metric.is_empty() && service.is_empty() {
+        return Ok(None);
     }
 
-    if !service_rules.is_empty() && !config.enable_systemd {
+    if !service.is_empty() && !config.enable_systemd {
         warn!(
             "Service alert rules are configured but systemd is disabled \
              (set NANOMON_ENABLE_SYSTEMD=true); they will not fire"
@@ -246,18 +245,10 @@ fn load_alert_evaluator(config: &Config) -> Option<Arc<AlertEvaluator>> {
 
     info!(
         "Loaded {} metric rule(s) and {} service rule(s) from {:?}",
-        rules.len(),
-        service_rules.len(),
+        metric.len(),
+        service.len(),
         path
     );
     let sink = Arc::new(WebhookSink::new());
-    Some(Arc::new(AlertEvaluator::new(rules, service_rules, sink)))
-}
-
-#[derive(serde::Deserialize)]
-struct AlertConfig {
-    #[serde(default)]
-    rules: Vec<AlertRule>,
-    #[serde(default)]
-    service_rules: Vec<ServiceAlertRule>,
+    Ok(Some(Arc::new(AlertEvaluator::new(metric, service, sink))))
 }

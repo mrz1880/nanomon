@@ -213,6 +213,10 @@ when it ended.
 - **Severity** (`info` / `warning` / `critical`) drives the ntfy priority and
   tag, so a full disk does not arrive looking like a load spike. A resolution is
   always sent quietly.
+- **A broken alert config stops the process**: when `NANOMON_ALERT_CONFIG` is
+  set but the file is unreadable or invalid, NanoMon exits instead of running
+  without alerts. The webhook URLs live in that file, so a warning in the logs
+  was the only trace and nobody would have been notified.
 - **A failed send does not close the incident**: `notified` stays false and the
   next cycle retries, so a webhook outage cannot silence an alert.
 - Notification bodies carry the metric's business label and unit, the incident

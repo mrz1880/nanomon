@@ -5,6 +5,11 @@ services:
     container_name: nanomon
     ports:
       - "3000:3000"
+    # The image runs unprivileged; this group grants read access to the
+    # Docker socket. Docker Desktop owns it as root:root (gid 0). On a Linux
+    # host, set DOCKER_GID to `stat -c %g /var/run/docker.sock`.
+    group_add:
+      - "${DOCKER_GID:-0}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /proc:/host/proc:ro

@@ -40,6 +40,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy binary from builder (the dashboard assets are embedded in it)
 COPY --from=builder /build/target/release/nanomon /app/nanomon
 
+# Run unprivileged: the files NanoMon reads under /proc and /sys are
+# world-readable. The Docker socket is not, so the deployment grants the
+# socket's group with `group_add` (see deploy/compose.yml).
+RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin nanomon
+USER 10001
+
 # Set environment variables
 ENV NANOMON_PORT=3000
 ENV NANOMON_POLL_INTERVAL=10

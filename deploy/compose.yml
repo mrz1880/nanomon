@@ -28,6 +28,10 @@ services:
       NANOMON_ALERT_CONFIG: /etc/nanomon/alerts.toml
       TZ: Europe/Paris
     pid: host
+    # The image runs unprivileged: grant the group that owns the Docker
+    # socket on the NAS (`stat -c %g /var/run/docker.sock` gives 121).
+    group_add:
+      - "121"
     security_opt:
       - no-new-privileges:true
     read_only: true

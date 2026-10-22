@@ -357,7 +357,9 @@ setInterval(fetchDashboard, 10000);
 6. Test in Docker: `docker compose up --build`
 
 `make check` runs steps 1-4 together. CI enforces fmt + clippy + tests + the
-coverage threshold (`.github/workflows/ci.yml`).
+coverage threshold (`.github/workflows/ci.yml`), and `cargo audit` checks
+`Cargo.lock` against RustSec on every push and weekly
+(`.github/workflows/audit.yml`).
 
 ### Quality tooling
 

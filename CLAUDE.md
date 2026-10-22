@@ -352,14 +352,28 @@ setInterval(fetchDashboard, 10000);
 1. Run `cargo fmt` (format)
 2. Run `cargo clippy -- -D warnings` (lints)
 3. Run `cargo test` (unit tests)
-4. Run `make coverage` (line coverage of business logic must stay ≥ `COV_MIN`, default 60%)
+4. Run `make coverage` (line coverage of business logic must stay ≥ `COV_MIN`, set in the `Makefile`)
 5. Ensure binary size < 10 MB: `ls -lh target/release/nanomon`
 6. Test in Docker: `docker compose up --build`
+7. Add a line under `## [Unreleased]` in `CHANGELOG.md`, and an *Upgrade notes*
+   entry for anything an existing deployment must change
 
 `make check` runs steps 1-4 together. CI enforces fmt + clippy + tests + the
 coverage threshold (`.github/workflows/ci.yml`), and `cargo audit` checks
 `Cargo.lock` against RustSec on every push and weekly
 (`.github/workflows/audit.yml`).
+
+### Releasing
+
+1. Rename `## [Unreleased]` in `CHANGELOG.md` to `## [x.y.z] - YYYY-MM-DD`, open a
+   new empty `Unreleased` section and update the compare links at the bottom.
+2. Bump `version` in `Cargo.toml`, run `cargo check` to update `Cargo.lock`, and
+   commit as `chore(release): x.y.z`.
+3. Tag `vx.y.z` and push the tag: `release.yml` publishes the binaries with that
+   CHANGELOG section as release notes (it fails if the section is missing), and
+   `docker-publish.yml` pushes the `x.y.z`, `x.y` and `x` image tags.
+
+Under 0.x, a change that breaks an existing deployment bumps the minor version.
 
 ### Quality tooling
 

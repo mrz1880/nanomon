@@ -49,9 +49,20 @@ jobs:
           echo "Published $out"
           cat "$out.sha256"
 
+      # CHANGELOG.md is the source of the release notes: keep only the section
+      # of this tag, from its "## [x.y.z]" heading to the next one.
+      - name: Extract release notes
+        run: |
+          set -euo pipefail
+          awk -v heading="## [${GITHUB_REF_NAME#v}]" \
+            'index($0, "## [") == 1 { keep = (index($0, heading) == 1); next } /^\[[^]]*\]: / { next } keep' \
+            CHANGELOG.md > release-notes.md
+          test -s release-notes.md || { echo "No CHANGELOG.md section for $GITHUB_REF_NAME"; exit 1; }
+
       - name: Attach to release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
+          body_path: release-notes.md
           files: |
             nanomon-${{ matrix.target }}
             nanomon-${{ matrix.target }}.sha256

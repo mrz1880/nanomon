@@ -5,7 +5,7 @@
 **🚀 Lightweight self-hosted server & NAS monitoring with < 15 MB RAM footprint**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Rust](https://img.shields.io/badge/rust-1.83%2B-orange.svg)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-1.88%2B-orange.svg)](https://www.rust-lang.org/)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](https://hub.docker.com/)
 
 *Monitor your NAS without breaking a sweat*
@@ -92,7 +92,7 @@ docker run -d \
 ### Method 3: Build from Source
 
 ```bash
-# Prerequisites: Rust 1.83+
+# Prerequisites: Rust 1.88+
 cargo build --release
 
 # Run (requires root for /proc and Docker socket access)
@@ -329,7 +329,7 @@ NanoMon follows **Hexagonal Architecture** (Ports & Adapters) for clean separati
 
 ### Prerequisites
 
-- Rust 1.83+ ([install](https://rustup.rs/))
+- Rust 1.88+ ([install](https://rustup.rs/))
 - Docker (for container monitoring)
 
 ### Build

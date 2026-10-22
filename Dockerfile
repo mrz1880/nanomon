@@ -1,5 +1,7 @@
 # Multi-stage build for minimal image size
-FROM rust:1.83-slim as builder
+# Builds on the MSRV: Cargo.toml `rust-version` is authoritative, and cargo
+# refuses to build if this toolchain falls below it.
+FROM rust:1.88-slim-trixie AS builder
 
 WORKDIR /build
 

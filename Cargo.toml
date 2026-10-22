@@ -2,7 +2,7 @@
 name = "nanomon"
 version = "0.5.0"
 edition = "2021"
-rust-version = "1.83"
+rust-version = "1.88"
 authors = ["Anthony D. <mrz1880@gmail.com>"]
 description = "Lightweight self-hosted server & NAS monitoring: host, Docker, processes, temperatures, alerting and Prometheus — under 15 MB RAM"
 license = "MIT"

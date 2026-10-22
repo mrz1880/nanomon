@@ -365,6 +365,9 @@ setInterval(fetchDashboard, 10000);
 coverage threshold (`.github/workflows/ci.yml`), and `cargo audit` checks
 `Cargo.lock` against RustSec on every push and weekly
 (`.github/workflows/audit.yml`).
+Runners are pinned to `ubuntu-26.04` rather than `ubuntu-latest`, like actions are
+pinned to SHAs: a runner image migration lands as a reviewed change, not
+halfway through a rollout. Change the label in every workflow at once.
 
 ### Releasing
 

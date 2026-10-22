@@ -79,7 +79,7 @@ Open **http://localhost:3000** in your browser 🎉
 ```bash
 docker run -d \
   --name nanomon \
-  -p 3000:3000 \
+  -p 127.0.0.1:3000:3000 \
   --group-add "$(stat -c %g /var/run/docker.sock)" \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -v /proc:/host/proc:ro \

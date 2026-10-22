@@ -8,8 +8,12 @@ services:
     image: ghcr.io/mrz1880/nanomon:latest
     container_name: nanomon
     restart: unless-stopped
-    ports:
-      - "3000:3000"
+    # No published port: the API has no authentication, and a host port is
+    # reachable from the whole LAN, bypassing Traefik's basic auth. Traefik
+    # reaches the container by name on its network (http://nanomon:3000 in
+    # /volume1/docker/configs/traefik/dynamic/infrastructure.yml).
+    networks:
+      - traefik-public
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /proc:/host/proc:ro
@@ -45,3 +49,7 @@ services:
       retries: 3
     labels:
       - com.centurylinklabs.watchtower.enable=true
+
+networks:
+  traefik-public:
+    external: true

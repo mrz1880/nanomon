@@ -92,17 +92,20 @@ Only what is specific to NanoMon is listed here.
 
 ### HTTP layer (Axum)
 
-1. **Handler errors**: `AppError` and its `IntoResponse` impl exist in `interface/http/handlers.rs`,
-   but no handler uses them yet — 10 handlers still build
-   `(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()` inline. That duplicates the
-   mapping and returns the raw internal error to the client. New handlers return
+1. **Handler errors**: `AppError` and its `IntoResponse` impl live in `interface/http/handlers.rs`.
+   The container handlers use it, but the others still build
+   `(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()` inline, which duplicates
+   the mapping. Both paths return the raw internal error to the client. New handlers return
    `Result<_, AppError>`; convert an existing one whenever you touch it.
 2. **Shared state**: handlers receive `MonitoringService` through the router state. No global
    mutable state, no lazy statics.
 3. **Cross-cutting concerns** (request tracing, timeouts, compression) belong in `tower` layers in
    `interface/http/routes.rs`, not repeated per handler. Only `CorsLayer::permissive()` is wired
    today — which is another reason not to expose port 3000 publicly.
-4. **Blocking work**: procfs reads are small and stay inline in the async path. Anything that can
+4. **Read the snapshot, don't query sources**: handlers answer from the collector's last
+   snapshot (`current_snapshot`), never by calling a port. A Docker listing costs one stats call
+   per running container, so a live query on every page refresh breaks the CPU budget.
+5. **Blocking work**: procfs reads are small and stay inline in the async path. Anything that can
    block for more than a few milliseconds (SMART, D-Bus, external HTTP scrape) goes to
    `tokio::task::spawn_blocking` or a background task: the collector shares the reactor with the
    API, and the CPU budget is < 1%.

@@ -24,7 +24,6 @@ use crate::domain::{
 
 /// Custom error type that implements IntoResponse
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct AppError(String);
 
 impl IntoResponse for AppError {
@@ -308,26 +307,19 @@ pub async fn host_handler(State(state): State<AppState>) -> Response {
 }
 
 /// Handler for GET /api/containers
-pub async fn containers_handler(State(state): State<AppState>) -> Response {
-    let containers = match state.monitoring_service.get_containers().await {
-        Ok(c) => c,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
-    };
-
-    let stacks = match state.monitoring_service.get_stacks().await {
-        Ok(s) => s,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
-    };
-
-    (
-        StatusCode::OK,
-        Json(ContainersResponse {
-            timestamp: chrono::Utc::now().to_rfc3339(),
-            containers,
-            stacks,
-        }),
-    )
-        .into_response()
+///
+/// Reads the collector's last snapshot: querying Docker here would cost one
+/// stats call per running container on every request.
+pub async fn containers_handler(
+    State(state): State<AppState>,
+) -> Result<Json<ContainersResponse>, AppError> {
+    let host = current_snapshot(&state).await?;
+    let stacks = MonitoringService::group_stacks(&host.containers);
+    Ok(Json(ContainersResponse {
+        timestamp: host.timestamp.to_rfc3339(),
+        containers: host.containers,
+        stacks,
+    }))
 }
 
 /// Handler for GET /api/processes
@@ -539,24 +531,22 @@ pub async fn services_handler(State(state): State<AppState>) -> Response {
 }
 
 /// Handler for GET /api/containers/:name
+///
+/// Reads the collector's last snapshot, as `/api/containers` does.
 #[debug_handler]
 pub async fn container_detail_handler(
     State(state): State<AppState>,
     Path(name): Path<String>,
-) -> Response {
-    let containers = match state.monitoring_service.get_containers().await {
-        Ok(c) => c,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
-    };
-
-    match containers.into_iter().find(|c| c.name == name) {
+) -> Result<Response, AppError> {
+    let host = current_snapshot(&state).await?;
+    Ok(match host.containers.into_iter().find(|c| c.name == name) {
         Some(container) => (StatusCode::OK, Json(container)).into_response(),
         None => (
             StatusCode::NOT_FOUND,
             format!("Container '{}' not found", name),
         )
             .into_response(),
-    }
+    })
 }
 
 /// Handler for GET /metrics (Prometheus text exposition format)

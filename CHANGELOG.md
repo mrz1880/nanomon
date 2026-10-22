@@ -17,6 +17,14 @@ by their git tags and commit history.
   current load: a container busy once could read 26% while idle. It is now
   measured between two collections, so it reads 0 on a container's first one.
 
+### Changed
+
+- `/api/containers` and `/api/containers/{name}` answer from the last
+  collection instead of querying Docker, which cost two stats calls per running
+  container on every request. Their data is up to one poll interval old, and the
+  `timestamp` field now says when it was collected rather than when it was
+  served.
+
 ## [0.6.0] - 2026-10-22
 
 ### Upgrade notes

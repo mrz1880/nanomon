@@ -207,19 +207,6 @@ impl MonitoringService {
         self.metric_store.get_latest()
     }
 
-    /// Get all containers
-    pub async fn get_containers(
-        &self,
-    ) -> Result<Vec<Container>, Box<dyn std::error::Error + Send + Sync>> {
-        self.container_source.list_containers().await
-    }
-
-    /// Get containers grouped by stack
-    pub async fn get_stacks(&self) -> Result<Vec<Stack>, Box<dyn std::error::Error + Send + Sync>> {
-        let containers = self.get_containers().await?;
-        Ok(Self::group_stacks(&containers))
-    }
-
     /// Group containers into stacks, sorted by CPU usage (top consumers first).
     ///
     /// Pure function so it can be reused against a stored snapshot without a
@@ -619,29 +606,6 @@ mod tests {
         assert!(slow.containers.is_empty());
         assert!(slow.temperatures.is_empty());
         assert_eq!(slow.processes.len(), 2);
-    }
-
-    #[tokio::test]
-    async fn get_stacks_groups_containers_from_the_source() {
-        let stacks = service().get_stacks().await.unwrap();
-
-        // "solo" has no stack label, so only "blog" is reported.
-        assert_eq!(stacks.len(), 1);
-        assert_eq!(stacks[0].name, "blog");
-        assert_eq!(stacks[0].containers_total, 2);
-        assert_eq!(stacks[0].cpu_percent, 15.0);
-    }
-
-    #[tokio::test]
-    async fn get_containers_propagates_source_failures() {
-        let svc = MonitoringService::new(
-            Arc::new(MockSys::default()),
-            Arc::new(MockContainers { fail: true }),
-            Arc::new(MockProcs::default()),
-            Arc::new(MockStore),
-        );
-        assert!(svc.get_containers().await.is_err());
-        assert!(svc.get_stacks().await.is_err());
     }
 
     #[tokio::test]

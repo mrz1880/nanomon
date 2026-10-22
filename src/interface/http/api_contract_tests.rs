@@ -17,8 +17,8 @@ use tower::ServiceExt;
 use crate::adapters::MemoryStore;
 use crate::application::{Collector, DirectoryUsageService, MonitoringService};
 use crate::domain::{
-    Container, ContainerId, CpuMetrics, Disk, Host, LoadAverage, MemoryMetrics, NetworkInterface,
-    NetworkMetrics, Process, Temperature,
+    Container, ContainerId, ContainerState, CpuMetrics, Disk, Host, LoadAverage, MemoryMetrics,
+    NetworkInterface, NetworkMetrics, Process, Temperature,
 };
 use crate::ports::{ContainerSource, ContainerStats, HostInfo, ProcessSource, SystemSource};
 
@@ -114,7 +114,8 @@ fn snapshot() -> Host {
     host
 }
 
-async fn get_json(path: &str) -> Value {
+/// Sends one GET through the real router, with `host` as the stored snapshot.
+async fn get(path: &str, host: Host) -> axum::response::Response {
     let unreachable = Arc::new(Unreachable);
     let service = Arc::new(MonitoringService::new(
         unreachable.clone(),
@@ -122,7 +123,7 @@ async fn get_json(path: &str) -> Value {
         unreachable,
         Arc::new(MemoryStore::new(10)),
     ));
-    service.store_snapshot(snapshot());
+    service.store_snapshot(host);
     let live = Collector::new(
         service.clone(),
         Arc::new(MemoryStore::new(10)),
@@ -138,10 +139,17 @@ async fn get_json(path: &str) -> Value {
         15,
     );
 
-    let response = router
+    router
         .oneshot(Request::get(path).body(Body::empty()).unwrap())
         .await
-        .unwrap();
+        .unwrap()
+}
+
+async fn get_json(path: &str) -> Value {
+    json_of(get(path, snapshot()).await).await
+}
+
+async fn json_of(response: axum::response::Response) -> Value {
     assert_eq!(response.status(), StatusCode::OK);
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     serde_json::from_slice(&body).unwrap()
@@ -237,4 +245,50 @@ async fn dashboard_endpoint_aggregates_host_disks_and_network() {
         "network": expected_network()
     });
     assert_eq!(get_json("/api/dashboard").await, expected);
+}
+
+/// The snapshot with two containers of one compose stack.
+fn snapshot_with_containers() -> Host {
+    let created = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+    let container = |name: &str| {
+        Container::new(
+            ContainerId::new(name),
+            name.to_string(),
+            "image:1".to_string(),
+            ContainerState::Running,
+            created,
+        )
+        .with_stack(Some("app".to_string()))
+    };
+    snapshot().with_containers(vec![container("web"), container("db")])
+}
+
+#[tokio::test]
+async fn containers_endpoint_answers_from_the_snapshot_without_querying_docker() {
+    let body = json_of(get("/api/containers", snapshot_with_containers()).await).await;
+
+    assert_eq!(body["timestamp"], "2026-01-02T03:04:05+00:00");
+    let names: Vec<&str> = body["containers"]
+        .as_array()
+        .expect("containers is an array")
+        .iter()
+        .map(|c| c["name"].as_str().expect("a container has a name"))
+        .collect();
+    assert_eq!(names, ["web", "db"]);
+    assert_eq!(body["stacks"][0]["name"], "app");
+    assert_eq!(body["stacks"][0]["containers_total"], 2);
+}
+
+#[tokio::test]
+async fn container_detail_endpoint_answers_from_the_snapshot() {
+    let body = json_of(get("/api/containers/db", snapshot_with_containers()).await).await;
+
+    assert_eq!(body["name"], "db");
+}
+
+#[tokio::test]
+async fn container_detail_endpoint_reports_an_unknown_container_as_not_found() {
+    let response = get("/api/containers/ghost", snapshot_with_containers()).await;
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }

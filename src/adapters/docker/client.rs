@@ -1,27 +1,44 @@
 use async_trait::async_trait;
 use bollard::models::{
-    ContainerCpuStats, ContainerNetworkStats, ContainerStatsResponse, ContainerSummary,
-    ContainerSummaryStateEnum,
+    ContainerNetworkStats, ContainerStatsResponse, ContainerSummary, ContainerSummaryStateEnum,
 };
 use bollard::query_parameters::{ListContainersOptions, StatsOptions};
 use bollard::Docker;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
+use std::sync::Mutex;
 
+use super::cpu::{CpuSample, CpuSamples};
 use crate::domain::{
     Container, ContainerId, ContainerState, CpuMetrics, IoMetrics, MemoryMetrics, NetworkMetrics,
 };
 use crate::ports::{ContainerSource, ContainerStats};
 
+// A std lock is "poisoned" when a thread panics while holding its guard;
+// every later lock() then returns Err. The critical sections below only
+// update a map and never panic, so poisoning cannot happen.
+const LOCK_INVARIANT: &str = "CPU samples lock poisoned: no code panics while holding it";
+
 /// Docker adapter using bollard client
 pub struct DockerAdapter {
     client: Docker,
+    /// CPU counters of the previous collection, per container. `Mutex` gives
+    /// the `&self` trait methods mutable access, shared by the collector and
+    /// the HTTP handlers that both list containers.
+    cpu_samples: Mutex<CpuSamples>,
 }
 
 impl DockerAdapter {
     pub fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let client = Docker::connect_with_local_defaults()?;
-        Ok(Self { client })
+        Ok(Self::with_client(client))
+    }
+
+    fn with_client(client: Docker) -> Self {
+        Self {
+            client,
+            cpu_samples: Mutex::new(CpuSamples::default()),
+        }
     }
 
     #[allow(dead_code)]
@@ -29,7 +46,7 @@ impl DockerAdapter {
         socket_path: &str,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let client = Docker::connect_with_socket(socket_path, 120, bollard::API_DEFAULT_VERSION)?;
-        Ok(Self { client })
+        Ok(Self::with_client(client))
     }
 
     fn map_container_state(state: Option<ContainerSummaryStateEnum>) -> ContainerState {
@@ -83,34 +100,37 @@ impl DockerAdapter {
         );
 
         let stats = stream.next().await.ok_or("No stats available")??;
-        Ok(stats_from_sample(stats))
+        // The guard is a temporary dropped at the end of this statement, so the
+        // lock is never held across an `.await`.
+        Ok(stats_from_sample(
+            id,
+            stats,
+            &mut self.cpu_samples.lock().expect(LOCK_INVARIANT),
+        ))
     }
 }
 
 /// Maps a Docker stats sample to NanoMon's container metrics.
 ///
 /// # Arguments
+/// * `id` - Container the sample belongs to.
 /// * `stats` - One sample from the Docker stats endpoint.
+/// * `cpu_samples` - CPU counters of the previous collection; updated.
 ///
 /// # Returns
-/// CPU, memory, network and block I/O metrics of the container.
-fn stats_from_sample(stats: ContainerStatsResponse) -> ContainerStats {
+/// CPU, memory, network and block I/O metrics of the container. CPU reads 0
+/// on the first collection of a container, which has no reference yet.
+fn stats_from_sample(
+    id: &ContainerId,
+    stats: ContainerStatsResponse,
+    cpu_samples: &mut CpuSamples,
+) -> ContainerStats {
+    // Docker's CPU counters are cumulative: the load is measured against the
+    // sample of the previous collection, since a one-shot sample has no precpu.
+    let cpu_percent = cpu_samples.record(id.clone(), CpuSample::from_stats(&stats));
+
     // Since bollard 0.21 every field of the sample is optional: an absent
     // counter is read as 0, as Docker omits what the cgroup does not report.
-    let cpu = stats.cpu_stats.as_ref();
-    let precpu = stats.precpu_stats.as_ref();
-
-    // Calculate CPU percentage
-    let cpu_delta = total_cpu_ns(cpu) as f64 - total_cpu_ns(precpu) as f64;
-    let system_delta = system_cpu_ns(cpu) as f64 - system_cpu_ns(precpu) as f64;
-
-    let num_cpus = cpu.and_then(|c| c.online_cpus).unwrap_or(1) as f64;
-    let cpu_percent = if system_delta > 0.0 && cpu_delta > 0.0 {
-        (cpu_delta / system_delta) * num_cpus * 100.0
-    } else {
-        0.0
-    };
-
     // Memory
     let memory = stats.memory_stats.as_ref();
     let memory_used = memory.and_then(|m| m.usage).unwrap_or(0);
@@ -153,18 +173,6 @@ fn stats_from_sample(stats: ContainerStatsResponse) -> ContainerStats {
         network: NetworkMetrics::new(rx_bytes, tx_bytes, rx_errors, tx_errors),
         block_io: IoMetrics::new(read_bytes, write_bytes),
     }
-}
-
-/// CPU time the container consumed, in nanoseconds; 0 when Docker omits it.
-fn total_cpu_ns(cpu: Option<&ContainerCpuStats>) -> u64 {
-    cpu.and_then(|c| c.cpu_usage.as_ref())
-        .and_then(|u| u.total_usage)
-        .unwrap_or(0)
-}
-
-/// CPU time the whole host consumed, in nanoseconds; 0 when Docker omits it.
-fn system_cpu_ns(cpu: Option<&ContainerCpuStats>) -> u64 {
-    cpu.and_then(|c| c.system_cpu_usage).unwrap_or(0)
 }
 
 /// Maps a Docker container summary to a NanoMon container, without metrics.
@@ -219,6 +227,12 @@ impl ContainerSource for DockerAdapter {
             containers.push(container);
         }
 
+        let listed: Vec<ContainerId> = containers.iter().map(|c| c.id.clone()).collect();
+        self.cpu_samples
+            .lock()
+            .expect(LOCK_INVARIANT)
+            .keep_only(&listed);
+
         Ok(containers)
     }
 
@@ -238,6 +252,28 @@ mod tests {
     /// host, with round numbers. Fixtures are JSON rather than bollard structs
     /// so they survive bollard's type changes between versions.
     fn sample(blkio_op_read: &str, blkio_op_write: &str) -> ContainerStatsResponse {
+        sample_at(
+            blkio_op_read,
+            blkio_op_write,
+            CpuCounters {
+                total: 3000,
+                system: 40000,
+            },
+        )
+    }
+
+    /// Cumulative CPU counters of a fixture, in nanoseconds.
+    struct CpuCounters {
+        total: u64,
+        system: u64,
+    }
+
+    fn sample_at(
+        blkio_op_read: &str,
+        blkio_op_write: &str,
+        cpu: CpuCounters,
+    ) -> ContainerStatsResponse {
+        let (total_usage, system_cpu_usage) = (cpu.total, cpu.system);
         let json = format!(
             r#"{{
   "id": "abc123", "name": "/web",
@@ -257,8 +293,8 @@ mod tests {
     "sectors_recursive": null
   }},
   "cpu_stats": {{
-    "cpu_usage": {{ "total_usage": 3000, "usage_in_kernelmode": 1000, "usage_in_usermode": 2000 }},
-    "system_cpu_usage": 40000, "online_cpus": 4,
+    "cpu_usage": {{ "total_usage": {total_usage}, "usage_in_kernelmode": 0, "usage_in_usermode": 0 }},
+    "system_cpu_usage": {system_cpu_usage}, "online_cpus": 4,
     "throttling_data": {{ "periods": 0, "throttled_periods": 0, "throttled_time": 0 }}
   }},
   "precpu_stats": {{
@@ -278,16 +314,53 @@ mod tests {
         serde_json::from_str(&json).expect("fixture matches the Docker stats schema")
     }
 
+    /// Maps a sample with no CPU history, for the tests that ignore CPU.
+    fn map(stats: ContainerStatsResponse) -> ContainerStats {
+        stats_from_sample(
+            &ContainerId::new("abc123"),
+            stats,
+            &mut CpuSamples::default(),
+        )
+    }
+
     #[test]
-    fn cpu_is_the_share_of_host_time_scaled_by_online_cpus() {
-        // (3000 - 1000) / (40000 - 20000) * 4 cpus * 100
-        let stats = stats_from_sample(sample("Read", "Write"));
-        assert!((stats.cpu.usage_percent - 40.0).abs() < 1e-9);
+    fn cpu_usage_is_measured_between_collections_not_from_docker_precpu() {
+        let id = ContainerId::new("abc123");
+        let mut cpu = CpuSamples::default();
+        // The fixture's precpu (1000 / 20000) would read as 40% here, but a
+        // one-shot sample has none in production: no reference yet.
+        let earlier = sample_at(
+            "Read",
+            "Write",
+            CpuCounters {
+                total: 2000,
+                system: 30000,
+            },
+        );
+        let first = stats_from_sample(&id, earlier, &mut cpu);
+        assert_eq!(first.cpu.usage_percent, 0.0);
+
+        // Measured from the previous collection: (5000 - 2000) / (40000 - 30000)
+        // * 4 cpus * 100. The precpu would have given 80%.
+        let now = sample_at(
+            "Read",
+            "Write",
+            CpuCounters {
+                total: 5000,
+                system: 40000,
+            },
+        );
+        let second = stats_from_sample(&id, now, &mut cpu);
+        assert!(
+            (second.cpu.usage_percent - 120.0).abs() < 1e-9,
+            "got {}",
+            second.cpu.usage_percent
+        );
     }
 
     #[test]
     fn memory_available_is_what_the_limit_leaves() {
-        let stats = stats_from_sample(sample("Read", "Write"));
+        let stats = map(sample("Read", "Write"));
         assert_eq!(stats.memory.used_bytes, 600);
         assert_eq!(stats.memory.total_bytes, 1000);
         assert_eq!(stats.memory.available_bytes, 400);
@@ -295,7 +368,7 @@ mod tests {
 
     #[test]
     fn network_counters_are_summed_across_interfaces() {
-        let stats = stats_from_sample(sample("Read", "Write"));
+        let stats = map(sample("Read", "Write"));
         assert_eq!(stats.network.rx_bytes, 110);
         assert_eq!(stats.network.tx_bytes, 220);
         assert_eq!(stats.network.rx_errors, 1);
@@ -304,7 +377,7 @@ mod tests {
 
     #[test]
     fn block_io_is_summed_across_devices_per_direction() {
-        let stats = stats_from_sample(sample("Read", "Write"));
+        let stats = map(sample("Read", "Write"));
         assert_eq!(stats.block_io.read_bytes, 1024);
         assert_eq!(stats.block_io.write_bytes, 400);
     }
@@ -312,7 +385,7 @@ mod tests {
     #[test]
     fn block_io_is_counted_with_cgroup_v2_lowercase_ops() {
         // cgroup v1 reports "Read"/"Write", cgroup v2 hosts "read"/"write".
-        let stats = stats_from_sample(sample("read", "write"));
+        let stats = map(sample("read", "write"));
         assert_eq!(stats.block_io.read_bytes, 1024);
         assert_eq!(stats.block_io.write_bytes, 400);
     }

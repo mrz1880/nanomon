@@ -11,6 +11,12 @@ by their git tags and commit history.
 
 ## [Unreleased]
 
+### Fixed
+
+- Container CPU % showed the average since the container started, not its
+  current load: a container busy once could read 26% while idle. It is now
+  measured between two collections, so it reads 0 on a container's first one.
+
 ## [0.6.0] - 2026-10-22
 
 ### Upgrade notes

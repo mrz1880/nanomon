@@ -335,11 +335,7 @@ setInterval(fetchDashboard, 10000);
 ## Troubleshooting Build Issues
 
 ### `error: linking with cc failed`
-- Install build essentials: `apt-get install build-essential pkg-config libssl-dev`
-
-### `error: failed to run custom build command for openssl-sys`
-- Install OpenSSL dev: `apt-get install libssl-dev`
-- Or use vendored OpenSSL: Add to Cargo.toml: `openssl = { version = "0.10", features = ["vendored"] }`
+- Install build essentials: `apt-get install build-essential` (TLS is rustls: no OpenSSL needed)
 
 ### Binary size too large (> 20 MB)
 - Check release profile in Cargo.toml (should have `opt-level = "z"`, `lto = true`, `strip = true`)

@@ -5,12 +5,6 @@ FROM rust:1.88-slim-trixie AS builder
 
 WORKDIR /build
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    pkg-config \
-    libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
-
 # Copy manifests
 COPY Cargo.toml Cargo.lock ./
 

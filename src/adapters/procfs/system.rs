@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::Path;
 use std::sync::Mutex;
 
 use async_trait::async_trait;
@@ -169,6 +170,12 @@ impl SystemSource for ProcfsSystemSource {
 
         for mount in mounts {
             if skip_fs.contains(&mount.filesystem.as_str()) {
+                continue;
+            }
+
+            // A single-file bind mount (/etc/hosts, a mounted config file)
+            // reports the stats of the filesystem holding it, not of a disk.
+            if !Path::new(&mount.mount_point).is_dir() {
                 continue;
             }
 
@@ -625,6 +632,26 @@ mod tests {
         assert_eq!(disks[0].mount_point, "/");
         assert_eq!(disks[0].filesystem, "ext4");
         assert!(disks[0].total_bytes > 0);
+    }
+
+    #[tokio::test]
+    async fn single_file_bind_mounts_are_not_disks() {
+        // Docker bind-mounts files such as /etc/hosts or a config file; they
+        // sit on a real filesystem, so statvfs succeeds, yet they are not disks.
+        let fake = FakeFs::new("disks-file-mount");
+        let mounted_file = fake.root.join("alerts.toml");
+        fake.write("alerts.toml", "");
+        fake.write(
+            "proc/mounts",
+            &format!(
+                "/dev/sda1 / ext4 rw 0 0\n/dev/sda1 {} ext4 ro 0 0\n",
+                mounted_file.display()
+            ),
+        );
+
+        let disks = fake.source().list_disks().await.unwrap();
+        assert_eq!(disks.len(), 1);
+        assert_eq!(disks[0].mount_point, "/");
     }
 
     #[tokio::test]

@@ -115,7 +115,7 @@ async function loadData() {
 // ---- Host ----
 
 async function loadHost() {
-    const response = await fetch('/api/host');
+    const response = await fetch('api/host');
     const data = await response.json();
 
     document.getElementById('hostname').textContent = data.hostname;
@@ -160,7 +160,7 @@ async function loadExternal() {
 
     let data;
     try {
-        data = await (await fetch('/api/external')).json();
+        data = await (await fetch('api/external')).json();
     } catch (_) {
         section.style.display = 'none';
         return;
@@ -220,7 +220,7 @@ function renderTemperatures(temperatures) {
 // ---- Charts ----
 
 async function loadCharts() {
-    const response = await fetch('/api/history?duration=3600');
+    const response = await fetch('api/history?duration=3600');
     const data = await response.json();
 
     if (data.timestamps.length === 0) {
@@ -347,7 +347,7 @@ function drawChart(canvasId, labels, datasets, options) {
 // ---- Containers list ----
 
 async function loadContainers() {
-    const response = await fetch('/api/containers');
+    const response = await fetch('api/containers');
     const data = await response.json();
     cachedContainersData = data;
 
@@ -447,7 +447,7 @@ function sortContainers(containers, sortBy) {
 // ---- Container detail ----
 
 async function loadContainerDetail(name) {
-    const response = await fetch(`/api/containers/${encodeURIComponent(name)}`);
+    const response = await fetch(`api/containers/${encodeURIComponent(name)}`);
     if (!response.ok) {
         renderDetailView(`
             <nav class="breadcrumb"><a href="#containers">Containers</a> / <span>${name}</span></nav>
@@ -543,7 +543,7 @@ async function loadContainerDetail(name) {
 // ---- Stack detail ----
 
 async function loadStackDetail(stackName) {
-    const response = await fetch('/api/containers');
+    const response = await fetch('api/containers');
     const data = await response.json();
 
     const stack = data.stacks.find(s => s.name === stackName);
@@ -632,7 +632,7 @@ function renderDetailView(html) {
 // ---- Processes ----
 
 async function loadProcesses() {
-    const response = await fetch(`/api/processes?sort=${currentSort}&limit=20`);
+    const response = await fetch(`api/processes?sort=${currentSort}&limit=20`);
     const data = await response.json();
     const tbody = document.getElementById('processes-list');
 
@@ -660,7 +660,7 @@ async function loadProcesses() {
 async function loadDisks() {
     loadWatchedDirs();
 
-    const response = await fetch('/api/disks');
+    const response = await fetch('api/disks');
     const data = await response.json();
     const tbody = document.getElementById('disks-list');
 
@@ -691,7 +691,7 @@ async function loadWatchedDirs() {
 
     let data;
     try {
-        const response = await fetch('/api/disks/dirs');
+        const response = await fetch('api/disks/dirs');
         data = await response.json();
     } catch (_) {
         section.style.display = 'none';
@@ -727,7 +727,7 @@ async function loadWatchedDirs() {
 // ---- Services ----
 
 async function loadServices() {
-    const response = await fetch('/api/services');
+    const response = await fetch('api/services');
     const data = await response.json();
     const content = document.getElementById('services-content');
 
@@ -789,7 +789,7 @@ function renderServiceTable(services) {
 
 async function checkServicesAvailable() {
     try {
-        const response = await fetch('/api/services');
+        const response = await fetch('api/services');
         const data = await response.json();
         if (!data.available) {
             const btn = document.querySelector('.tab-btn[data-tab="services"]');
@@ -825,7 +825,7 @@ function initLive() {
 // Seed the sliding windows so charts are full on load rather than empty.
 async function seedLive() {
     try {
-        const response = await fetch('/api/live/history');
+        const response = await fetch('api/live/history');
         const d = await response.json();
         live.memTotal = d.mem_total || 0;
         live.cpu = (d.cpu || []).slice(-LIVE_MAX);
@@ -842,7 +842,7 @@ async function seedLive() {
 }
 
 function connectStream() {
-    const es = new EventSource('/api/stream');
+    const es = new EventSource('api/stream');
     live.es = es;
     es.addEventListener('host', e => {
         try { onHostEvent(JSON.parse(e.data)); } catch (_) { /* ignore malformed */ }

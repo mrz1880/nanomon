@@ -13,6 +13,10 @@ by their git tags and commit history.
 
 ### Fixed
 
+- The dashboard stayed on "Loading..." behind a reverse proxy that serves it
+  under a path prefix (`/monitoring/`): it requested its script, stylesheet and
+  API at the root of the site. It now requests them relative to the page.
+
 - Container CPU % showed the average since the container started, not its
   current load: a container busy once could read 26% while idle. It is now
   measured between two collections, so it reads 0 on a container's first one.

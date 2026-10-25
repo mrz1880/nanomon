@@ -99,6 +99,23 @@ mod tests {
         }
     }
 
+    #[test]
+    fn the_dashboard_works_behind_a_path_prefix() {
+        // A reverse proxy may serve NanoMon under a prefix (/monitoring/): a
+        // root-absolute URL in the page escapes it and reaches whatever the
+        // proxy serves at its root, so the page never loads its data.
+        for name in ["index.html", "app.js"] {
+            let file = Assets::get(name).expect("asset should be embedded");
+            let text = String::from_utf8_lossy(&file.data);
+            for absolute in ["\"/static/", "'/api/", "`/api/"] {
+                assert!(
+                    !text.contains(absolute),
+                    "{name} requests {absolute}..., which escapes a path prefix"
+                );
+            }
+        }
+    }
+
     #[tokio::test]
     async fn root_serves_the_dashboard_html() {
         let response = get("/", HeaderMap::new()).await;

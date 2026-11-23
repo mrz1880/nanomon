@@ -11,6 +11,14 @@ by their git tags and commit history.
 
 ## [Unreleased]
 
+### Security
+
+- `url` is updated to 2.5.9, which fixes a stack overflow in `Url::origin()` on
+  nested `blob:` URLs
+  ([RUSTSEC-2026-0592](https://rustsec.org/advisories/RUSTSEC-2026-0592)). It is
+  pulled in by the Docker client and the HTTP client used for webhooks and
+  scrape targets.
+
 ## [0.6.1] - 2026-10-25
 
 ### Fixed

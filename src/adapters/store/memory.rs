@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use chrono::Utc;
+use jiff::Timestamp;
 
 use crate::domain::Host;
 use crate::ports::MetricStore;
@@ -44,8 +44,12 @@ impl MetricStore for MemoryStore {
 
     fn get_history(&self, duration: Duration) -> Vec<Arc<Host>> {
         let snapshots = self.snapshots.read().expect(LOCK_INVARIANT);
-        let now = Utc::now();
-        let cutoff = now - chrono::Duration::from_std(duration).unwrap_or_default();
+        // A window reaching before the earliest representable instant excludes
+        // nothing. `checked_sub` reports that overflow as an Err where the `-`
+        // operator would panic, and the duration comes straight from a query.
+        let cutoff = Timestamp::now()
+            .checked_sub(duration)
+            .unwrap_or(Timestamp::MIN);
 
         snapshots
             .iter()
@@ -64,13 +68,13 @@ mod tests {
     use super::MemoryStore;
     use crate::domain::Host;
     use crate::ports::MetricStore;
-    use chrono::{Duration as ChronoDuration, Utc};
+    use jiff::{SignedDuration, Timestamp};
     use std::time::Duration;
 
     /// A snapshot named `hostname`, timestamped `age_secs` in the past.
     fn snapshot(hostname: &str, age_secs: i64) -> Host {
         Host::new(hostname.to_string())
-            .with_timestamp(Utc::now() - ChronoDuration::seconds(age_secs))
+            .with_timestamp(Timestamp::now() - SignedDuration::from_secs(age_secs))
     }
 
     #[test]
@@ -127,6 +131,16 @@ mod tests {
         let store = MemoryStore::new(10);
         store.store(snapshot("old", 600));
         assert!(store.get_history(Duration::from_secs(60)).is_empty());
+    }
+
+    #[test]
+    fn a_window_reaching_before_recorded_time_keeps_every_snapshot() {
+        let store = MemoryStore::new(10);
+        store.store(snapshot("old", 600));
+
+        let window = store.get_history(Duration::from_secs(u64::MAX));
+
+        assert_eq!(window.len(), 1);
     }
 
     #[test]

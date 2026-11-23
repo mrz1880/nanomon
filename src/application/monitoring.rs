@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use chrono::Utc;
+use jiff::Timestamp;
 use tracing::warn;
 
 use crate::domain::{
@@ -80,7 +80,7 @@ impl MonitoringService {
             .with_containers(containers)
             .with_processes(processes)
             .with_temperatures(temperatures)
-            .with_timestamp(Utc::now());
+            .with_timestamp(Timestamp::now());
 
         Ok(host)
     }
@@ -141,7 +141,7 @@ impl MonitoringService {
         let host = Host::new(host_info.hostname)
             .with_metrics(host_info.uptime_seconds, load_avg, cpu, memory)
             .with_network_interfaces(interfaces)
-            .with_timestamp(Utc::now());
+            .with_timestamp(Timestamp::now());
 
         Ok(host)
     }
@@ -286,7 +286,7 @@ mod tests {
         Container, ContainerId, ContainerState, CpuMetrics, IoMetrics, MemoryMetrics,
         NetworkMetrics,
     };
-    use chrono::Utc;
+    use jiff::Timestamp;
 
     fn container(name: &str, stack: Option<&str>, cpu: f64, mem: u64, running: bool) -> Container {
         let state = if running {
@@ -299,7 +299,7 @@ mod tests {
             name.to_string(),
             "img".to_string(),
             state,
-            Utc::now(),
+            Timestamp::now(),
         )
         .with_stack(stack.map(|s| s.to_string()))
         .with_metrics(

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
-use chrono::{TimeZone, Utc};
+use jiff::{SignedDuration, Timestamp};
 use serde_json::{json, Value};
 // `oneshot` comes from this extension trait: it drives one request through
 // the router without binding a socket.
@@ -90,7 +90,7 @@ fn snapshot() -> Host {
     eth0.tx_bytes_per_sec = Some(20.25);
 
     let mut host = Host::new("nas".to_string())
-        .with_timestamp(Utc.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap())
+        .with_timestamp("2026-01-02T03:04:05Z".parse::<Timestamp>().unwrap())
         .with_metrics(
             3600,
             LoadAverage::new(0.5, 0.75, 1.25),
@@ -249,7 +249,7 @@ async fn dashboard_endpoint_aggregates_host_disks_and_network() {
 
 /// The snapshot with two containers of one compose stack.
 fn snapshot_with_containers() -> Host {
-    let created = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+    let created = "2026-01-01T00:00:00Z".parse::<Timestamp>().unwrap();
     let container = |name: &str| {
         Container::new(
             ContainerId::new(name),
@@ -302,8 +302,8 @@ async fn containers_endpoint_serializes_a_creation_date_in_utc_with_a_z_suffix()
 
 /// The snapshot taken `nanos` nanoseconds after the reference second.
 fn snapshot_with_sub_second(nanos: i64) -> Host {
-    let whole_second = Utc.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap();
-    snapshot().with_timestamp(whole_second + chrono::Duration::nanoseconds(nanos))
+    let whole_second = "2026-01-02T03:04:05Z".parse::<Timestamp>().unwrap();
+    snapshot().with_timestamp(whole_second + SignedDuration::from_nanos(nanos))
 }
 
 #[tokio::test]

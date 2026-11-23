@@ -17,9 +17,11 @@ use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt as _;
 
 use crate::application::{Collector, DirectoryUsageService, MonitoringService};
+use jiff::Timestamp;
+
 use crate::domain::{
-    Container, CpuMetrics, DirectoryUsage, Disk, ExternalMetric, Host, LoadAverage, MemoryMetrics,
-    NetworkInterface, Process, Stack, SystemdService, Temperature,
+    rfc3339_utc, Container, CpuMetrics, DirectoryUsage, Disk, ExternalMetric, Host, LoadAverage,
+    MemoryMetrics, NetworkInterface, Process, Stack, SystemdService, Temperature,
 };
 
 /// Custom error type that implements IntoResponse
@@ -87,7 +89,7 @@ pub struct HostResponse {
 impl From<&Host> for HostResponse {
     fn from(host: &Host) -> Self {
         Self {
-            timestamp: host.timestamp.to_rfc3339(),
+            timestamp: rfc3339_utc(host.timestamp),
             hostname: host.hostname.clone(),
             uptime_seconds: host.uptime_seconds,
             load_average: host.load_average.clone(),
@@ -228,7 +230,7 @@ impl From<&Host> for LiveHost {
     fn from(host: &Host) -> Self {
         let (net_rx_bps, net_tx_bps) = net_rates(host);
         Self {
-            ts: host.timestamp.to_rfc3339(),
+            ts: rfc3339_utc(host.timestamp),
             uptime_seconds: host.uptime_seconds,
             cpu: host.cpu.clone(),
             memory: host.memory.clone(),
@@ -285,7 +287,7 @@ pub async fn live_history_handler(State(state): State<AppState>) -> Response {
     let mem_total = history.last().map(|h| h.memory.total_bytes).unwrap_or(0);
 
     let response = LiveHistoryResponse {
-        timestamps: history.iter().map(|h| h.timestamp.to_rfc3339()).collect(),
+        timestamps: history.iter().map(|h| rfc3339_utc(h.timestamp)).collect(),
         cpu: history.iter().map(|h| h.cpu.usage_percent).collect(),
         mem_used: history.iter().map(|h| h.memory.used_bytes).collect(),
         mem_total,
@@ -316,7 +318,7 @@ pub async fn containers_handler(
     let host = current_snapshot(&state).await?;
     let stacks = MonitoringService::group_stacks(&host.containers);
     Ok(Json(ContainersResponse {
-        timestamp: host.timestamp.to_rfc3339(),
+        timestamp: rfc3339_utc(host.timestamp),
         containers: host.containers,
         stacks,
     }))
@@ -346,7 +348,7 @@ pub async fn processes_handler(
         Ok(processes) => (
             StatusCode::OK,
             Json(ProcessesResponse {
-                timestamp: chrono::Utc::now().to_rfc3339(),
+                timestamp: rfc3339_utc(Timestamp::now()),
                 processes,
             }),
         )
@@ -362,7 +364,7 @@ pub async fn disks_handler(State(state): State<AppState>) -> Response {
         Ok(host) => (
             StatusCode::OK,
             Json(DisksResponse {
-                timestamp: host.timestamp.to_rfc3339(),
+                timestamp: rfc3339_utc(host.timestamp),
                 disks: host.disks,
             }),
         )
@@ -385,7 +387,7 @@ pub async fn directories_handler(State(state): State<AppState>) -> Response {
     (
         StatusCode::OK,
         Json(DirectoriesResponse {
-            timestamp: chrono::Utc::now().to_rfc3339(),
+            timestamp: rfc3339_utc(Timestamp::now()),
             enabled: state.dir_usage.enabled(),
             directories: state.dir_usage.snapshot(),
         }),
@@ -400,7 +402,7 @@ pub async fn network_handler(State(state): State<AppState>) -> Response {
         Ok(host) => (
             StatusCode::OK,
             Json(NetworkResponse {
-                timestamp: host.timestamp.to_rfc3339(),
+                timestamp: rfc3339_utc(host.timestamp),
                 interfaces: host.network_interfaces,
             }),
         )
@@ -472,7 +474,7 @@ pub async fn history_handler(
     let memory_total = history.last().map(|h| h.memory.total_bytes).unwrap_or(0);
 
     let response = HistoryResponse {
-        timestamps: history.iter().map(|h| h.timestamp.to_rfc3339()).collect(),
+        timestamps: history.iter().map(|h| rfc3339_utc(h.timestamp)).collect(),
         cpu: history.iter().map(|h| h.cpu.usage_percent).collect(),
         memory_used: history.iter().map(|h| h.memory.used_bytes).collect(),
         memory_total,
@@ -503,7 +505,7 @@ pub async fn external_handler(State(state): State<AppState>) -> Response {
     (
         StatusCode::OK,
         Json(ExternalResponse {
-            timestamp: chrono::Utc::now().to_rfc3339(),
+            timestamp: rfc3339_utc(Timestamp::now()),
             metrics,
         }),
     )
@@ -522,7 +524,7 @@ pub async fn services_handler(State(state): State<AppState>) -> Response {
     (
         StatusCode::OK,
         Json(ServicesResponse {
-            timestamp: chrono::Utc::now().to_rfc3339(),
+            timestamp: rfc3339_utc(Timestamp::now()),
             services,
             available,
         }),

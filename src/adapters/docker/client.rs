@@ -4,7 +4,7 @@ use bollard::models::{
 };
 use bollard::query_parameters::{ListContainersOptions, StatsOptions};
 use bollard::Docker;
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -188,7 +188,7 @@ fn container_from_summary(summary: ContainerSummary) -> Container {
     let image = summary.image.unwrap_or_else(|| "unknown".to_string());
     let state = DockerAdapter::map_container_state(summary.state);
     let created = summary.created.unwrap_or(0);
-    let created_at = DateTime::<Utc>::from_timestamp(created, 0).unwrap_or_else(Utc::now);
+    let created_at = Timestamp::from_second(created).unwrap_or_else(|_| Timestamp::now());
 
     let labels = summary.labels.unwrap_or_default();
     let stack = DockerAdapter::extract_stack_name(&labels);
@@ -408,6 +408,6 @@ mod tests {
         assert_eq!(container.image, "nginx:1.27");
         assert!(container.state.is_running());
         assert_eq!(container.stack.as_deref(), Some("site"));
-        assert_eq!(container.created_at.timestamp(), 1792685202);
+        assert_eq!(container.created_at.as_second(), 1792685202);
     }
 }

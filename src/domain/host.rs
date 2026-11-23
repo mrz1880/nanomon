@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -23,7 +23,7 @@ pub struct Host {
     pub services: Vec<SystemdService>,
     #[serde(default)]
     pub external: Vec<ExternalMetric>,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: Timestamp,
 }
 
 impl Host {
@@ -41,7 +41,7 @@ impl Host {
             temperatures: Vec::new(),
             services: Vec::new(),
             external: Vec::new(),
-            timestamp: Utc::now(),
+            timestamp: Timestamp::now(),
         }
     }
 
@@ -94,7 +94,7 @@ impl Host {
         self
     }
 
-    pub fn with_timestamp(mut self, timestamp: DateTime<Utc>) -> Self {
+    pub fn with_timestamp(mut self, timestamp: Timestamp) -> Self {
         self.timestamp = timestamp;
         self
     }
@@ -147,7 +147,7 @@ mod tests {
         NetworkInterface, NetworkMetrics, Process, ProcessState, ResourceType, ServiceState,
         SystemdService, Temperature, TemperatureSource,
     };
-    use chrono::{TimeZone, Utc};
+    use jiff::Timestamp;
 
     fn iface(name: &str, rx: u64, tx: u64) -> NetworkInterface {
         NetworkInterface::new(name.to_string(), true, NetworkMetrics::new(rx, tx, 0, 0))
@@ -232,7 +232,7 @@ mod tests {
 
     #[test]
     fn with_timestamp_overrides_creation_time() {
-        let when = Utc.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap();
+        let when = "2026-01-02T03:04:05Z".parse::<Timestamp>().unwrap();
         let host = Host::new("nas".to_string()).with_timestamp(when);
         assert_eq!(host.timestamp, when);
     }

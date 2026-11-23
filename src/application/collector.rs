@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use tokio::sync::broadcast;
 use tokio::time::interval;
 use tracing::error;
@@ -19,7 +19,7 @@ const LOCK_INVARIANT: &str = "network sample lock poisoned: no code panics while
 
 /// Snapshot of cumulative network counters, used to derive throughput rates.
 struct NetSample {
-    at: DateTime<Utc>,
+    at: Timestamp,
     /// interface name -> (rx_bytes, tx_bytes)
     ifaces: HashMap<String, (u64, u64)>,
 }
@@ -161,7 +161,7 @@ impl Collector {
             .with_processes(resources.processes)
             .with_services(resources.services)
             .with_external(external)
-            .with_timestamp(Utc::now());
+            .with_timestamp(Timestamp::now());
 
         if let Some(alert) = &self.alert {
             alert.evaluate(&merged).await;
@@ -177,7 +177,7 @@ impl Collector {
         let mut guard = self.net_prev.lock().expect(LOCK_INVARIANT);
 
         if let Some(prev) = guard.as_ref() {
-            let dt = (now - prev.at).num_milliseconds() as f64 / 1000.0;
+            let dt = now.duration_since(prev.at).as_millis() as f64 / 1000.0;
             for iface in &mut host.network_interfaces {
                 if let Some(&(prev_rx, prev_tx)) = prev.ifaces.get(&iface.name) {
                     if let (Some(rx), Some(tx)) = (

@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 
 use crate::domain::{
-    AlertEvent, AlertKind, AlertMetric, AlertRule, Host, MetricReading, ServiceAlertEvent,
-    ServiceAlertRule, ServiceState, SystemdService,
+    rfc3339_utc, AlertEvent, AlertKind, AlertMetric, AlertRule, Host, MetricReading,
+    ServiceAlertEvent, ServiceAlertRule, ServiceState, SystemdService,
 };
 use crate::ports::AlertSink;
 
@@ -17,7 +17,7 @@ const LOCK_INVARIANT: &str = "alert state lock poisoned: no code panics while ho
 /// What the evaluator remembers about a breaching numeric rule between cycles.
 struct BreachState {
     /// When the value first crossed the threshold, for the incident duration.
-    since: DateTime<Utc>,
+    since: Timestamp,
     /// Whether the notification actually reached the sink. A webhook outage
     /// leaves this false so the next cycle retries instead of going quiet.
     notified: bool,
@@ -27,7 +27,7 @@ struct BreachState {
 pub struct AlertEvaluator {
     rules: Vec<AlertRule>,
     service_rules: Vec<ServiceAlertRule>,
-    last_fired: RwLock<HashMap<String, DateTime<Utc>>>,
+    last_fired: RwLock<HashMap<String, Timestamp>>,
     /// Numeric rules currently in breach, keyed by rule name. Absence means the
     /// rule is within limits, so entering the map is the firing transition.
     breaches: RwLock<HashMap<String, BreachState>>,
@@ -121,8 +121,8 @@ impl AlertEvaluator {
             };
 
             // Still pending: the breach has not lasted long enough to matter.
-            let lasted = snapshot.timestamp.signed_duration_since(since);
-            if lasted.num_seconds() < rule.for_seconds as i64 {
+            let lasted = snapshot.timestamp.duration_since(since);
+            if lasted.as_secs() < rule.for_seconds as i64 {
                 continue;
             }
 
@@ -130,8 +130,8 @@ impl AlertEvaluator {
             {
                 let last_fired = self.last_fired.read().expect(LOCK_INVARIANT);
                 if let Some(last) = last_fired.get(&rule.name) {
-                    let elapsed = snapshot.timestamp.signed_duration_since(*last);
-                    if elapsed.num_seconds() < rule.cooldown_seconds as i64 {
+                    let elapsed = snapshot.timestamp.duration_since(*last);
+                    if elapsed.as_secs() < rule.cooldown_seconds as i64 {
                         continue;
                     }
                 }
@@ -211,7 +211,7 @@ impl AlertEvaluator {
             {
                 let last_fired = self.last_fired.read().expect(LOCK_INVARIANT);
                 if let Some(last) = last_fired.get(&rule.name) {
-                    let elapsed = Utc::now().signed_duration_since(*last).num_seconds();
+                    let elapsed = Timestamp::now().duration_since(*last).as_secs();
                     if elapsed < rule.cooldown_seconds as i64 {
                         continue;
                     }
@@ -220,7 +220,7 @@ impl AlertEvaluator {
             self.last_fired
                 .write()
                 .expect(LOCK_INVARIANT)
-                .insert(rule.name.clone(), Utc::now());
+                .insert(rule.name.clone(), Timestamp::now());
 
             fired.push((
                 rule.webhook_url.clone(),
@@ -229,7 +229,7 @@ impl AlertEvaluator {
                     unit: rule.unit.clone(),
                     state: format!("{state:?}").to_lowercase(),
                     hostname: hostname.to_string(),
-                    timestamp: Utc::now().to_rfc3339(),
+                    timestamp: rfc3339_utc(Timestamp::now()),
                 },
             ));
         }
@@ -244,11 +244,11 @@ impl AlertEvaluator {
         rule: &AlertRule,
         reading: MetricReading,
         snapshot: &Host,
-        breached_since: Option<DateTime<Utc>>,
+        breached_since: Option<Timestamp>,
     ) -> AlertEvent {
         let breached_for_seconds = breached_since.map(|since| {
-            let elapsed = snapshot.timestamp.signed_duration_since(since);
-            elapsed.num_seconds().max(0) as u64
+            let elapsed = snapshot.timestamp.duration_since(since);
+            elapsed.as_secs().max(0) as u64
         });
         AlertEvent {
             kind,
@@ -260,7 +260,7 @@ impl AlertEvaluator {
             threshold: rule.threshold,
             condition: format!("{:?}", rule.condition),
             hostname: snapshot.hostname.clone(),
-            timestamp: snapshot.timestamp.to_rfc3339(),
+            timestamp: rfc3339_utc(snapshot.timestamp),
             breached_for_seconds,
             warn_at: reading.warn_at,
         }
@@ -593,8 +593,8 @@ mod tests {
 
     /// The CPU snapshot as collected `seconds` after a fixed origin.
     fn cpu_at(seconds: i64, cpu: f64) -> Host {
-        let origin = chrono::DateTime::<chrono::Utc>::UNIX_EPOCH;
-        snapshot_with_cpu(cpu).with_timestamp(origin + chrono::Duration::seconds(seconds))
+        let origin = jiff::Timestamp::UNIX_EPOCH;
+        snapshot_with_cpu(cpu).with_timestamp(origin + jiff::SignedDuration::from_secs(seconds))
     }
 
     #[tokio::test]

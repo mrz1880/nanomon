@@ -18,6 +18,14 @@ by their git tags and commit history.
   ([RUSTSEC-2026-0592](https://rustsec.org/advisories/RUSTSEC-2026-0592)). It is
   pulled in by the Docker client and the HTTP client used for webhooks and
   scrape targets.
+- Dates are handled by `jiff` instead of `chrono`, which is no longer maintained
+  ([RUSTSEC-2026-0543](https://rustsec.org/advisories/RUSTSEC-2026-0543)). The
+  dates the API and the alerts publish keep their exact format.
+
+### Fixed
+
+- `/api/history` returned nothing for a `duration` too long to be subtracted
+  from the current date. It now returns the whole history.
 
 ## [0.6.1] - 2026-10-25
 

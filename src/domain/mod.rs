@@ -10,6 +10,7 @@ pub mod process;
 pub mod resource;
 pub mod service;
 pub mod temperature;
+pub mod time;
 
 pub use alert::{
     AlertEvent, AlertKind, AlertMetric, AlertRule, MetricReading, ServiceAlertEvent,
@@ -26,3 +27,4 @@ pub use process::{Process, ProcessState};
 pub use resource::{MonitoredResource, ResourceType};
 pub use service::{ServiceState, SystemdService};
 pub use temperature::{Temperature, TemperatureSource};
+pub use time::rfc3339_utc;

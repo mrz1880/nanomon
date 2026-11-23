@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -58,7 +58,7 @@ pub struct Container {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stack: Option<String>, // com.docker.compose.project label
     pub state: ContainerState,
-    pub created_at: DateTime<Utc>,
+    pub created_at: Timestamp,
     pub cpu: CpuMetrics,
     pub memory: MemoryMetrics,
     pub network: NetworkMetrics,
@@ -71,7 +71,7 @@ impl Container {
         name: String,
         image: String,
         state: ContainerState,
-        created_at: DateTime<Utc>,
+        created_at: Timestamp,
     ) -> Self {
         Self {
             id,
@@ -162,7 +162,7 @@ mod tests {
     use crate::domain::{
         CpuMetrics, IoMetrics, MemoryMetrics, MonitoredResource, NetworkMetrics, ResourceType,
     };
-    use chrono::Utc;
+    use jiff::Timestamp;
 
     fn container(name: &str, state: ContainerState, cpu: f64, mem: u64) -> Container {
         Container::new(
@@ -170,7 +170,7 @@ mod tests {
             name.to_string(),
             "img:latest".to_string(),
             state,
-            Utc::now(),
+            Timestamp::now(),
         )
         .with_metrics(
             CpuMetrics::new(cpu, 0.0, 0.0),
@@ -208,7 +208,7 @@ mod tests {
             "web".to_string(),
             "nginx".to_string(),
             ContainerState::Running,
-            Utc::now(),
+            Timestamp::now(),
         );
         assert!(c.stack.is_none());
         assert_eq!(c.cpu.usage_percent, 0.0);

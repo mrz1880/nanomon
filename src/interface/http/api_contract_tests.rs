@@ -292,3 +292,37 @@ async fn container_detail_endpoint_reports_an_unknown_container_as_not_found() {
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn containers_endpoint_serializes_a_creation_date_in_utc_with_a_z_suffix() {
+    let body = json_of(get("/api/containers", snapshot_with_containers()).await).await;
+
+    assert_eq!(body["containers"][0]["created_at"], "2026-01-01T00:00:00Z");
+}
+
+/// The snapshot taken `nanos` nanoseconds after the reference second.
+fn snapshot_with_sub_second(nanos: i64) -> Host {
+    let whole_second = Utc.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap();
+    snapshot().with_timestamp(whole_second + chrono::Duration::nanoseconds(nanos))
+}
+
+#[tokio::test]
+async fn timestamps_keep_trailing_zeros_of_a_millisecond_fraction() {
+    let body = json_of(get("/api/disks", snapshot_with_sub_second(120_000_000)).await).await;
+
+    assert_eq!(body["timestamp"], "2026-01-02T03:04:05.120+00:00");
+}
+
+#[tokio::test]
+async fn timestamps_keep_trailing_zeros_of_a_microsecond_fraction() {
+    let body = json_of(get("/api/disks", snapshot_with_sub_second(120_300_000)).await).await;
+
+    assert_eq!(body["timestamp"], "2026-01-02T03:04:05.120300+00:00");
+}
+
+#[tokio::test]
+async fn timestamps_carry_nanoseconds_when_the_clock_provides_them() {
+    let body = json_of(get("/api/disks", snapshot_with_sub_second(123_456_789)).await).await;
+
+    assert_eq!(body["timestamp"], "2026-01-02T03:04:05.123456789+00:00");
+}

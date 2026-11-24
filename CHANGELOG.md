@@ -11,6 +11,8 @@ by their git tags and commit history.
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-11-24
+
 ### Security
 
 - `url` is updated to 2.5.9, which fixes a stack overflow in `Url::origin()` on
@@ -26,6 +28,10 @@ by their git tags and commit history.
 
 - `/api/history` returned nothing for a `duration` too long to be subtracted
   from the current date. It now returns the whole history.
+
+### Changed
+
+- Dependencies: rust-embed 8.14, toml 1.2.
 
 ## [0.6.1] - 2026-10-25
 
@@ -83,6 +89,7 @@ by their git tags and commit history.
 - Dependabot replaces Renovate for dependency updates, including the Dockerfile
   base images.
 
-[Unreleased]: https://github.com/mrz1880/nanomon/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/mrz1880/nanomon/compare/v0.6.2...HEAD
+[0.6.2]: https://github.com/mrz1880/nanomon/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/mrz1880/nanomon/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/mrz1880/nanomon/compare/v0.5.0...v0.6.0
